@@ -54,7 +54,6 @@ let activeGame = null;
 let reviewHistory = [];
 let currentReviewIndex = 0;
 let currentActiveGameRecord = null;
-
 let moveAnalysisData = []; 
 
 // --- STOCKFISH WORKER ENGINE SETUP ---
@@ -154,6 +153,79 @@ function storeMoveAnalysis(index, whiteEval) {
 
     updateClassificationUI();
     renderMovesList();
+    calculateAndSaveFullGameMetrics();
+}
+
+function accuracyToElo(acc) {
+    if (isNaN(acc)) return 1200;
+    if (acc >= 95) return Math.round(2000 + (acc - 95) * 80);
+    if (acc >= 85) return Math.round(1250 + (acc - 85) * 75);
+    if (acc >= 75) return Math.round(1000 + (acc - 75) * 25);
+    if (acc >= 60) return Math.round(600 + (acc - 60) * 26.6);
+    return Math.max(400, Math.round(acc * 10));
+}
+
+async function calculateAndSaveFullGameMetrics() {
+    let whiteLosses = [];
+    let blackLosses = [];
+
+    for (let i = 1; i < moveAnalysisData.length; i++) {
+        const curr = moveAnalysisData[i];
+        const prev = moveAnalysisData[i - 1];
+        if (!curr || !prev) continue;
+
+        const isWhite = (i % 2 === 1);
+        const loss = isWhite ? Math.max(0, prev.winProb - curr.winProb) : Math.max(0, curr.winProb - prev.winProb);
+
+        if (isWhite) whiteLosses.push(loss);
+        else blackLosses.push(loss);
+    }
+
+    if (whiteLosses.length === 0) return;
+
+    const avgWhiteLoss = whiteLosses.reduce((a, b) => a + b, 0) / whiteLosses.length;
+    const avgBlackLoss = blackLosses.length > 0 ? (blackLosses.reduce((a, b) => a + b, 0) / blackLosses.length) : avgWhiteLoss;
+
+    const whiteAccVal = parseFloat(Math.min(99.5, Math.max(20.0, 100 * Math.exp(-3.5 * avgWhiteLoss))).toFixed(1));
+    const blackAccVal = parseFloat(Math.min(99.5, Math.max(20.0, 100 * Math.exp(-3.5 * avgBlackLoss))).toFixed(1));
+
+    const whiteEloVal = accuracyToElo(whiteAccVal);
+    const blackEloVal = accuracyToElo(blackAccVal);
+
+    const wAccStr = `${whiteAccVal}%`;
+    const bAccStr = `${blackAccVal}%`;
+    const wEloStr = `~${whiteEloVal} ELO`;
+    const bEloStr = `~${blackEloVal} ELO`;
+
+    const wAccEl = document.getElementById('white-accuracy-val');
+    const bAccEl = document.getElementById('black-accuracy-val');
+    const wEloEl = document.getElementById('white-elo-val');
+    const bEloEl = document.getElementById('black-elo-val');
+
+    if (wAccEl) wAccEl.innerText = wAccStr;
+    if (bAccEl) bAccEl.innerText = bAccStr;
+    if (wEloEl) wEloEl.innerText = wEloStr;
+    if (bEloEl) bEloEl.innerText = bEloStr;
+
+    // Update database record as reviewed
+    if (currentActiveGameRecord && supabaseClient) {
+        currentActiveGameRecord.accuracy = wAccStr;
+        currentActiveGameRecord.black_accuracy = bAccStr;
+        currentActiveGameRecord.white_elo = wEloStr;
+        currentActiveGameRecord.black_elo = bEloStr;
+        currentActiveGameRecord.is_reviewed = true;
+
+        await supabaseClient
+            .from('games')
+            .update({
+                accuracy: wAccStr,
+                black_accuracy: bAccStr,
+                white_elo: wEloStr,
+                black_elo: bEloStr,
+                is_reviewed: true
+            })
+            .eq('id', currentActiveGameRecord.id);
+    }
 }
 
 function updateClassificationUI() {
@@ -635,19 +707,18 @@ async function importSelectedChessComGames() {
         else if (g.black.result === 'win') res = '0-1';
 
         const gamePgn = g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`;
-        
-        // Dynamic initial performance accuracy generation
-        const whiteAcc = (82 + Math.random() * 14).toFixed(1) + '%';
-        const blackAcc = (80 + Math.random() * 15).toFixed(1) + '%';
 
         const newGame = {
             user_id: currentUser.id,
             opponent: `${white} vs. ${black}`,
             result: res,
             date: date,
-            accuracy: whiteAcc,
-            black_accuracy: blackAcc,
-            pgn: gamePgn
+            accuracy: 'Pending',
+            black_accuracy: 'Pending',
+            white_elo: 'Pending',
+            black_elo: 'Pending',
+            pgn: gamePgn,
+            is_reviewed: false
         };
 
         const { error } = await supabaseClient.from('games').insert([newGame]);
@@ -655,7 +726,7 @@ async function importSelectedChessComGames() {
     }
 
     closeChessComModal();
-    alert(`Successfully imported ${insertCount} new game(s) from Chess.com!`);
+    alert(`Successfully imported ${insertCount} new game(s) from Chess.com as Pending!`);
     fetchGamesFromDatabase();
 }
 
@@ -706,17 +777,18 @@ async function saveImportedGame() {
     }
 
     const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
-    const whiteAcc = (83 + Math.random() * 13).toFixed(1) + '%';
-    const blackAcc = (81 + Math.random() * 14).toFixed(1) + '%';
 
     const newGame = {
         user_id: currentUser.id,
         opponent: opponentName,
         result: resultText,
         date: gameDate,
-        accuracy: whiteAcc,
-        black_accuracy: blackAcc,
-        pgn: pgn
+        accuracy: 'Pending',
+        black_accuracy: 'Pending',
+        white_elo: 'Pending',
+        black_elo: 'Pending',
+        pgn: pgn,
+        is_reviewed: false
     };
 
     if (supabaseClient) {
@@ -770,27 +842,19 @@ function renderGamesList() {
         row.className = "p-4 grid grid-cols-12 items-center text-sm hover:bg-gray-800/40 transition cursor-pointer";
         row.onclick = () => openGameReview(game);
         
-        let accDisplay = game.accuracy;
-        if (!accDisplay || accDisplay === 'Pending') {
-            accDisplay = (82 + Math.random() * 12).toFixed(1) + '%';
+        let accDisplay = game.accuracy || 'Pending';
+        if (accDisplay !== 'Pending') {
+            accDisplay = `${game.accuracy} / ${game.black_accuracy || 'Pending'}`;
         }
 
         row.innerHTML = `
             <div class="col-span-5 font-semibold text-white">${game.opponent}</div>
             <div class="col-span-3 text-gray-400">${game.result} <span class="text-xs block text-gray-500">${game.date}</span></div>
-            <div class="col-span-2 text-kastledGold font-bold" style="color:#E5A93C;">${accDisplay}</div>
+            <div class="col-span-2 text-kastledGold font-bold text-xs" style="color:#E5A93C;">${accDisplay}</div>
             <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span></div>
         `;
         container.appendChild(row);
     });
-}
-
-function accuracyToElo(accString) {
-    const num = parseFloat(accString);
-    if (isNaN(num)) return 1400;
-    // Estimated performance ELO mapping based on accuracy
-    const estimatedElo = Math.round(400 + (num * 18.5));
-    return Math.max(600, Math.min(2800, estimatedElo));
 }
 
 async function openGameReview(game) {
@@ -815,17 +879,6 @@ async function openGameReview(game) {
         blackName = parsePgnHeader(game.pgn, 'Black') || blackName;
     }
 
-    // Determine Accuracies (No longer stuck on 'Pending')
-    let whiteAcc = game.accuracy;
-    if (!whiteAcc || whiteAcc === 'Pending') {
-        whiteAcc = (84.5 + Math.random() * 10).toFixed(1) + '%';
-    }
-    let blackAcc = game.black_accuracy || (81.0 + Math.random() * 12).toFixed(1) + '%';
-
-    const whiteElo = accuracyToElo(whiteAcc);
-    const blackElo = accuracyToElo(blackAcc);
-
-    // Update Header Labels & Player-Specific Stats
     const wLabelEl = document.getElementById('white-player-label');
     const bLabelEl = document.getElementById('black-player-label');
     const wAccEl = document.getElementById('white-accuracy-val');
@@ -835,10 +888,18 @@ async function openGameReview(game) {
 
     if (wLabelEl) wLabelEl.innerText = `White (${whiteName})`;
     if (bLabelEl) bLabelEl.innerText = `Black (${blackName})`;
-    if (wAccEl) wAccEl.innerText = whiteAcc;
-    if (bAccEl) bAccEl.innerText = blackAcc;
-    if (wEloEl) wEloEl.innerText = `~${whiteElo} ELO`;
-    if (bEloEl) bEloEl.innerText = `~${blackElo} ELO`;
+
+    if (game.is_reviewed && game.accuracy && game.accuracy !== 'Pending') {
+        if (wAccEl) wAccEl.innerText = game.accuracy;
+        if (bAccEl) bAccEl.innerText = game.black_accuracy || 'Pending';
+        if (wEloEl) wEloEl.innerText = game.white_elo || 'Pending';
+        if (bEloEl) bEloEl.innerText = game.black_elo || 'Pending';
+    } else {
+        if (wAccEl) wAccEl.innerText = 'Calculating...';
+        if (bAccEl) bAccEl.innerText = 'Calculating...';
+        if (wEloEl) wEloEl.innerText = 'Calculating...';
+        if (bEloEl) bEloEl.innerText = 'Calculating...';
+    }
 
     switchView('review');
 }
