@@ -7,7 +7,6 @@ let batchAnalysisIndex = 0;
 let batchResolveCallback = null;
 let batchTimeoutTimer = null;
 
-// References to parent state
 let getActiveGame = null;
 let getCurrentReviewIndex = null;
 let updateEvalUICallback = null;
@@ -71,11 +70,18 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
-// 1. EXACT LICHESS/CHESS.COM WIN PROBABILITY FORMULA (W from Centipawns)
+// 1. EXACT LICHESS WIN PROBABILITY FORMULA (0 - 100%)
 function evalToWinProb(cp) {
-    const pawns = cp;
-    const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * (pawns * 100))) - 1);
-    return Math.max(0.01, Math.min(0.99, winRate / 100));
+    const cpVal = cp * 100;
+    const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cpVal)) - 1);
+    return Math.max(0.0, Math.min(100.0, winRate));
+}
+
+// 2. LICHESS MOVE-BY-MOVE ACCURACY FORMULA
+function calculateMoveAccuracy(winDiff) {
+    const deltaW = Math.max(0, winDiff);
+    const acc = 103.1668 * Math.exp(-0.04354 * deltaW) - 3.1669;
+    return Math.max(0.0, Math.min(100.0, acc));
 }
 
 export function getMoveAnalysisData() { return moveAnalysisData; }
@@ -90,16 +96,15 @@ function storeMoveAnalysis(index, whiteEval) {
         const prevProb = moveAnalysisData[index - 1].winProb;
         const moveColor = (index % 2 === 1) ? 'w' : 'b';
         
-        const probLoss = moveColor === 'w' ? (prevProb - winProb) : (winProb - prevProb);
-        const lossPct = Math.max(0, probLoss * 100);
+        const winLossPct = moveColor === 'w' ? (prevProb - winProb) : (winProb - prevProb);
 
-        if (lossPct > 20) {
+        if (winLossPct > 20) {
             badge = '❌'; label = 'Blunder ❌ (Major Error)';
-        } else if (lossPct > 10) {
+        } else if (winLossPct > 10) {
             badge = '⚠️'; label = 'Mistake ⚠️ (Inaccuracy)';
-        } else if (lossPct > 5) {
+        } else if (winLossPct > 5) {
             badge = '🟡'; label = 'Inaccuracy 🟡';
-        } else if (lossPct > 2) {
+        } else if (winLossPct > 2) {
             badge = '👍'; label = 'Good Move 👍';
         } else {
             badge = '⭐'; label = 'Best Move ⭐ (Optimal)';
@@ -109,15 +114,14 @@ function storeMoveAnalysis(index, whiteEval) {
     moveAnalysisData[index] = { eval: whiteEval, winProb: winProb, badge, label };
 }
 
-// 2. CALIBRATED PERFORMANCE ELO MAPPING CURVE
+// 3. ELO CALIBRATION BENCHMARKS
 function accuracyToElo(acc) {
     if (isNaN(acc)) return 1000;
-    if (acc >= 95) return Math.round(2000 + (acc - 95) * 80); // 2000 - 2400+
-    if (acc >= 90) return Math.round(1600 + (acc - 90) * 80); // 1600 - 2000
-    if (acc >= 80) return Math.round(1200 + (acc - 80) * 40); // 1200 - 1600
-    if (acc >= 70) return Math.round(900 + (acc - 70) * 30);  // 900 - 1200
-    if (acc >= 55) return Math.round(600 + (acc - 55) * 20);  // 600 - 900
-    return Math.max(300, Math.round(acc * 10));
+    if (acc >= 92) return Math.round(2000 + (acc - 92) * 50); // 2000 - 2400
+    if (acc >= 80) return Math.round(1500 + (acc - 80) * 41.6); // 1500 - 2000
+    if (acc >= 68) return Math.round(1000 + (acc - 68) * 41.6); // 1000 - 1500
+    if (acc >= 50) return Math.round(600 + (acc - 50) * 22.2);  // 600 - 1000
+    return Math.max(200, Math.round(acc * 10));
 }
 
 let currentBatchGame = null;
@@ -137,7 +141,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     currentBatchGame.reset();
     moveAnalysisData = [];
-    moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, badge: '', label: 'Starting Position ⚖️' };
+    moveAnalysisData[0] = { eval: 0.0, winProb: 50.0, badge: '', label: 'Starting Position ⚖️' };
 
     return new Promise((resolve) => {
         batchResolveCallback = resolve;
@@ -205,39 +209,29 @@ function onAnalysisComplete() {
     if (progressText) progressText.innerText = 'Analysis Complete! Loading Review...';
     if (progressBar) progressBar.style.width = '100%';
 
-    let whiteLosses = [];
-    let blackLosses = [];
+    let whiteMoveAccs = [];
+    let blackMoveAccs = [];
 
-    // 3. 3-PLY MOVING AVERAGE SMOOTHING FILTER TO ELIMINATE SEARCH JITTER
-    let smoothedEvals = [];
-    for (let i = 0; i < moveAnalysisData.length; i++) {
-        if (!moveAnalysisData[i]) continue;
-        let windowSum = moveAnalysisData[i].winProb;
-        let count = 1;
-        if (i > 0 && moveAnalysisData[i - 1]) { windowSum += moveAnalysisData[i - 1].winProb; count++; }
-        if (i < moveAnalysisData.length - 1 && moveAnalysisData[i + 1]) { windowSum += moveAnalysisData[i + 1].winProb; count++; }
-        smoothedEvals[i] = windowSum / count;
-    }
-
+    // Calculate move-by-move accuracy per player
     for (let i = 1; i < moveAnalysisData.length; i++) {
-        const curr = smoothedEvals[i];
-        const prev = smoothedEvals[i - 1];
-        if (curr === undefined || prev === undefined) continue;
+        const curr = moveAnalysisData[i];
+        const prev = moveAnalysisData[i - 1];
+        if (!curr || !prev) continue;
 
         const isWhite = (i % 2 === 1);
-        let rawLoss = isWhite ? (prev - curr) : (curr - prev);
-        let loss = Math.max(0, Math.min(0.4, rawLoss));
+        const winDiff = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
+        
+        const moveAcc = calculateMoveAccuracy(winDiff);
 
-        if (isWhite) whiteLosses.push(loss);
-        else blackLosses.push(loss);
+        if (isWhite) whiteMoveAccs.push(moveAcc);
+        else blackMoveAccs.push(moveAcc);
     }
 
-    const avgWhiteLoss = whiteLosses.length > 0 ? (whiteLosses.reduce((a, b) => a + b, 0) / whiteLosses.length) : 0.03;
-    const avgBlackLoss = blackLosses.length > 0 ? (blackLosses.reduce((a, b) => a + b, 0) / blackLosses.length) : 0.03;
+    const avgWhiteAcc = whiteMoveAccs.length > 0 ? (whiteMoveAccs.reduce((a, b) => a + b, 0) / whiteMoveAccs.length) : 75.0;
+    const avgBlackAcc = blackMoveAccs.length > 0 ? (blackMoveAccs.reduce((a, b) => a + b, 0) / blackMoveAccs.length) : 75.0;
 
-    // Lichess Exponential Accuracy Formula: 103.1668 * exp(-0.04354 * deltaW) - 3.1669 mapped globally
-    const whiteAccVal = parseFloat(Math.min(99.0, Math.max(40.0, 103.1668 * Math.exp(-1.2 * avgWhiteLoss) - 3.1669)).toFixed(1));
-    const blackAccVal = parseFloat(Math.min(99.0, Math.max(40.0, 103.1668 * Math.exp(-1.2 * avgBlackLoss) - 3.1669)).toFixed(1));
+    const whiteAccVal = parseFloat(avgWhiteAcc.toFixed(1));
+    const blackAccVal = parseFloat(avgBlackAcc.toFixed(1));
 
     const whiteEloVal = accuracyToElo(whiteAccVal);
     const blackEloVal = accuracyToElo(blackAccVal);
