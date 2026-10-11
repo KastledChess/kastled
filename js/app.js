@@ -1,907 +1,281 @@
-// KASTLED SUPABASE CREDENTIALS
-const SUPABASE_URL = "https://sgpafvuexdmnbdbvveny.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
-
-const supabaseClient = (typeof supabase !== 'undefined' && SUPABASE_URL !== "") 
-    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
-    : null;
-
-const PIECE_IMAGES = {
-    'wP': './Assets/wP.png',
-    'wN': './Assets/wN.png',
-    'wB': './Assets/wB.png',
-    'wR': './Assets/wR.png',
-    'wQ': './Assets/wQ.png',
-    'wK': './Assets/wK.png',
-    'bP': './Assets/bP.png',
-    'bN': './Assets/bN.png',
-    'bB': './Assets/bB.png',
-    'bR': './Assets/bR.png',
-    'bQ': './Assets/bQ.png',
-    'bK': './Assets/bK.png'
-};
-
-// --- AUDIO SOUND EFFECTS ---
-const gameStartSound = new Audio('./Assets/game-start.wav');
-const moveSound = new Audio('./Assets/move.wav');
-const captureSound = new Audio('./Assets/capture.wav');
-const checkSound = new Audio('./Assets/check.wav');
-const gameOverSound = new Audio('./Assets/game-over.wav');
-
-function playSound(audioObj) {
-    if (!audioObj) return;
-    audioObj.currentTime = 0;
-    audioObj.play().catch(() => {});
-}
-
-const INITIAL_BOARD = [
-    ['bR','bN','bB','bQ','bK','bB','bN','bR'],
-    ['bP','bP','bP','bP','bP','bP','bP','bP'],
-    ['','','','','','','',''],
-    ['','','','','','','',''],
-    ['','','','','','','',''],
-    ['','','','','','','',''],
-    ['wP','wP','wP','wP','wP','wP','wP','wP'],
-    ['wR','wN','wB','wQ','wK','wB','wN','wR']
-];
-
-let currentUser = null;
-let authMode = 'login';
-let savedGames = [];
-let fetchedChessComGames = [];
-
-let activeGame = null;
-let reviewHistory = [];
-let currentReviewIndex = 0;
-let currentActiveGameRecord = null;
-
-// Move evaluation store
-let moveAnalysisData = []; 
-
-// --- STOCKFISH WORKER ENGINE SETUP ---
-let stockfishWorker = null;
-
-function initStockfish() {
-    fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')
-        .then(response => response.text())
-        .then(scriptText => {
-            const blob = new Blob([scriptText], { type: 'application/javascript' });
-            const workerUrl = URL.createObjectURL(blob);
-            stockfishWorker = new Worker(workerUrl);
-
-            stockfishWorker.onmessage = function(event) {
-                const line = event.data || '';
-
-                if (line.includes('score cp')) {
-                    const match = line.match(/score cp (-?\d+)/);
-                    if (match) {
-                        let cp = parseInt(match[1]);
-                        // Normalize CP to White's perspective
-                        let isWhiteTurn = (activeGame && activeGame.turn) ? activeGame.turn() === 'w' : true;
-                        let whiteCp = isWhiteTurn ? cp : -cp;
-                        
-                        storeMoveAnalysis(currentReviewIndex, whiteCp / 100);
-                        updateEvalUI(whiteCp / 100);
-                    }
-                } else if (line.includes('score mate')) {
-                    const match = line.match(/score mate (-?\d+)/);
-                    if (match) {
-                        const mateIn = parseInt(match[1]);
-                        const evalEl = document.getElementById('eval-score');
-                        if (evalEl) evalEl.innerText = `Eval: #M${mateIn}`;
-                    }
-                }
-
-                if (line.includes('bestmove')) {
-                    const match = line.match(/bestmove\s+(\w+)/);
-                    if (match && match[1]) {
-                        const bestMoveEl = document.getElementById('best-move-text');
-                        const statusEl = document.getElementById('engine-status');
-                        if (bestMoveEl) bestMoveEl.innerText = match[1];
-                        if (statusEl) statusEl.innerText = 'Analysis Complete';
-                        
-                        if (moveAnalysisData[currentReviewIndex]) {
-                            moveAnalysisData[currentReviewIndex].bestMove = match[1];
-                        }
-                    }
-                }
-            };
-
-            stockfishWorker.postMessage('uci');
-            stockfishWorker.postMessage('isready');
-        })
-        .catch(err => console.warn("Stockfish Worker fallback active:", err));
-}
-
-// Convert Eval to Win Probability
-function evalToWinProb(evalInPawns) {
-    return 1 / (1 + Math.pow(10, -evalInPawns / 4));
-}
-
-function storeMoveAnalysis(index, whiteEval) {
-    const winProb = evalToWinProb(whiteEval);
-    let badge = '⭐';
-    let label = 'Best Move ⭐';
-
-    if (index > 0 && moveAnalysisData[index - 1]) {
-        const prevProb = moveAnalysisData[index - 1].winProb;
-        const moveColor = (index % 2 === 1) ? 'w' : 'b';
-        
-        // Probability drop for the active player
-        const probLoss = moveColor === 'w' ? (prevProb - winProb) : (winProb - prevProb);
-        const lossPct = probLoss * 100;
-
-        if (lossPct > 20) {
-            badge = '❌';
-            label = 'Blunder ❌ (Major Error)';
-        } else if (lossPct > 10) {
-            badge = '⚠️';
-            label = 'Mistake ⚠️ (Inaccuracy)';
-        } else if (lossPct > 5) {
-            badge = '🟡';
-            label = 'Inaccuracy 🟡';
-        } else if (lossPct > 2) {
-            badge = '👍';
-            label = 'Good Move 👍';
-        } else {
-            badge = '⭐';
-            label = 'Best Move ⭐ (Optimal)';
-        }
-    }
-
-    moveAnalysisData[index] = {
-        eval: whiteEval,
-        winProb: winProb,
-        badge: badge,
-        label: label
-    };
-
-    updateClassificationUI();
-    renderMovesList();
-}
-
-function updateClassificationUI() {
-    const classEl = document.getElementById('classification-text');
-    if (!classEl) return;
-
-    if (currentReviewIndex === 0) {
-        classEl.innerText = "Starting Position ⚖️";
-        return;
-    }
-
-    const current = moveAnalysisData[currentReviewIndex];
-    if (current && current.label) {
-        classEl.innerText = current.label;
-    } else {
-        classEl.innerText = "Analyzing Move...";
-    }
-}
-
-function analyzeCurrentPosition() {
-    if (!activeGame) return;
-    const statusEl = document.getElementById('engine-status');
-    if (statusEl) statusEl.innerText = 'Analyzing...';
-
-    if (moveAnalysisData[currentReviewIndex] && moveAnalysisData[currentReviewIndex].bestMove) {
-        const cached = moveAnalysisData[currentReviewIndex];
-        updateEvalUI(cached.eval);
-        updateClassificationUI();
-        const bestMoveEl = document.getElementById('best-move-text');
-        if (bestMoveEl) bestMoveEl.innerText = cached.bestMove;
-        if (statusEl) statusEl.innerText = 'Analysis Complete';
-        return;
-    }
-
-    if (stockfishWorker) {
-        const fen = activeGame.fen();
-        stockfishWorker.postMessage('stop');
-        stockfishWorker.postMessage(`position fen ${fen}`);
-        stockfishWorker.postMessage('go depth 12');
-    }
-}
-
-function updateEvalUI(evalScore) {
-    const formatted = evalScore > 0 ? `+${evalScore.toFixed(1)}` : evalScore.toFixed(1);
-    const evalEl = document.getElementById('eval-score');
-    const barEl = document.getElementById('eval-bar-fill');
-
-    if (evalEl) evalEl.innerText = `Eval: ${formatted}`;
-
-    if (barEl) {
-        let fillPercent = 50 + (evalScore * 6.25);
-        fillPercent = Math.max(5, Math.min(95, fillPercent));
-        barEl.style.height = `${fillPercent}%`;
-    }
-}
-
-window.addEventListener('DOMContentLoaded', async () => {
-    if (typeof Chess !== 'undefined') {
-        activeGame = new Chess();
-    }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kastled - Chess Redefined</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chess.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="./css/style.css">
     
-    initStockfish();
-
-    if (supabaseClient) {
-        try {
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            currentUser = session ? session.user : null;
-            
-            supabaseClient.auth.onAuthStateChange((_event, session) => {
-                currentUser = session ? session.user : null;
-                updateAuthHeader();
-            });
-        } catch (e) {
-            console.warn("Supabase auth session check skipped:", e);
-        }
-    }
-    
-    updateAuthHeader();
-    renderRawBoard('landing-board', INITIAL_BOARD);
-});
-
-function updateAuthHeader() {
-    const container = document.getElementById('auth-nav-container');
-    if (!container) return;
-
-    if (currentUser) {
-        container.innerHTML = `
-            <div class="flex items-center space-x-3 bg-gray-900/80 px-4 py-2 rounded-full border border-gray-800 cursor-pointer" onclick="checkAuthAndSwitch('profile')">
-                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
-                <span class="text-xs text-gray-300 font-mono">${currentUser.email}</span>
-            </div>
-            <button onclick="logout()" class="px-4 py-2 rounded-full border border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs font-bold transition">Log Out</button>
-        `;
-    } else {
-        container.innerHTML = `
-            <button onclick="openAuthModal('login')" class="px-5 py-2 rounded-full border border-gray-600 hover:border-kastledGold text-sm font-semibold transition">Log In</button>
-            <button onclick="openAuthModal('signup')" class="px-5 py-2 rounded-full bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition shadow-lg" style="background-color:#E5A93C; color:#0B132B;">SIGN UP</button>
-        `;
-    }
-}
-
-function renderRawBoard(elementId, gridData) {
-    const container = document.getElementById(elementId);
-    if (!container) return;
-
-    if (container.children.length !== 64) {
-        container.innerHTML = '';
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                const square = document.createElement('div');
-                const isDark = (r + c) % 2 === 1;
-                square.className = `square ${isDark ? 'square-dark' : 'square-light'}`;
-                container.appendChild(square);
-            }
-        }
-    }
-
-    const squares = container.children;
-    let index = 0;
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            const square = squares[index++];
-            const pieceCode = gridData[r][c];
-            let img = square.querySelector('img');
-
-            if (pieceCode) {
-                const imgSrc = PIECE_IMAGES[pieceCode] || `./Assets/${pieceCode}.png`;
-                if (!img) {
-                    img = document.createElement('img');
-                    img.className = 'piece-img';
-                    img.src = imgSrc;
-                    square.appendChild(img);
-                } else if (!img.src.includes(pieceCode)) {
-                    img.src = imgSrc;
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        kastledNavy: '#0B132B',
+                        kastledGold: '#E5A93C',
+                        kastledGoldHover: '#d49830',
+                        kastledBoardDark: '#6B82A8',
+                        kastledBoardLight: '#EAE3D2'
+                    }
                 }
-            } else if (img) {
-                img.remove();
             }
         }
-    }
-}
+    </script>
+</head>
+<body class="bg-kastledNavy text-white min-h-screen font-sans flex flex-col justify-between relative">
 
-function switchView(viewName) {
-    const landing = document.getElementById('view-landing');
-    const dashboard = document.getElementById('view-dashboard');
-    const review = document.getElementById('view-review');
-    const profile = document.getElementById('view-profile');
+    <!-- Header Navigation -->
+    <header class="w-full px-6 py-4 flex items-center justify-between border-b border-gray-800">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('landing')">
+            <img src="./Assets/logo.png" alt="Kastled Logo" class="h-16 w-auto object-contain" 
+                 onerror="this.onerror=null; this.src='./assets/logo.png';">
+        </div>
+        <nav class="hidden md:flex items-center space-x-8 text-gray-300">
+            <a href="#" onclick="switchView('landing')" class="hover:text-kastledGold transition">Home</a>
+            <a href="#" onclick="checkAuthAndSwitch('dashboard')" class="hover:text-kastledGold transition">Play</a>
+            <a href="#" onclick="checkAuthAndSwitch('review')" class="hover:text-kastledGold transition">Review</a>
+            <a href="#" onclick="checkAuthAndSwitch('profile')" class="hover:text-kastledGold transition">Profile</a>
+        </nav>
+        <div id="auth-nav-container" class="flex items-center space-x-4">
+            <!-- Dynamically populated -->
+        </div>
+    </header>
 
-    if (landing) landing.classList.add('hidden');
-    if (dashboard) dashboard.classList.add('hidden');
-    if (review) review.classList.add('hidden');
-    if (profile) profile.classList.add('hidden');
+    <!-- Main Container -->
+    <main class="flex-grow flex items-center justify-center p-4">
 
-    if (viewName === 'landing' && landing) {
-        landing.classList.remove('hidden');
-        renderRawBoard('landing-board', INITIAL_BOARD);
-    } else if (viewName === 'dashboard' && dashboard) {
-        dashboard.classList.remove('hidden');
-        fetchGamesFromDatabase();
-    } else if (viewName === 'review' && review) {
-        review.classList.remove('hidden');
-        playSound(gameStartSound);
-        updateReviewUI();
-    } else if (viewName === 'profile' && profile) {
-        profile.classList.remove('hidden');
-        loadProfileData();
-    }
-}
-
-async function loadProfileData() {
-    if (!currentUser || !supabaseClient) return;
-
-    const emailInput = document.getElementById('profile-email');
-    const nameInput = document.getElementById('profile-name');
-    const chesscomInput = document.getElementById('profile-chesscom');
-    const lichessInput = document.getElementById('profile-lichess');
-
-    if (emailInput) emailInput.value = currentUser.email || '';
-    if (nameInput) nameInput.value = currentUser.user_metadata?.full_name || '';
-    if (chesscomInput) chesscomInput.value = '';
-    if (lichessInput) lichessInput.value = '';
-
-    const { data, error } = await supabaseClient
-        .from('profiles')
-        .select('*')
-        .eq('id', currentUser.id)
-        .maybeSingle();
-
-    if (!error && data) {
-        if (nameInput) nameInput.value = data.full_name || currentUser.user_metadata?.full_name || '';
-        if (chesscomInput) chesscomInput.value = data.chesscom_alias || '';
-        if (lichessInput) lichessInput.value = data.lichess_alias || '';
-    }
-}
-
-async function handleProfileUpdate(e) {
-    e.preventDefault();
-    if (!currentUser || !supabaseClient) return;
-
-    const fullName = document.getElementById('profile-name')?.value.trim() || '';
-    const newEmail = document.getElementById('profile-email')?.value.trim() || '';
-    const chesscomAlias = document.getElementById('profile-chesscom')?.value.trim() || '';
-    const lichessAlias = document.getElementById('profile-lichess')?.value.trim() || '';
-    const msgEl = document.getElementById('profile-message');
-
-    if (msgEl) msgEl.classList.remove('hidden', 'bg-red-500/20', 'text-red-400', 'bg-green-500/20', 'text-green-400');
-
-    if (newEmail && newEmail !== currentUser.email) {
-        const { error: emailError } = await supabaseClient.auth.updateUser({ email: newEmail });
-        if (emailError) {
-            if (msgEl) {
-                msgEl.innerText = emailError.message;
-                msgEl.classList.add('bg-red-500/20', 'text-red-400');
-                msgEl.classList.remove('hidden');
-            }
-            return;
-        }
-    }
-
-    const { error: profileError } = await supabaseClient
-        .from('profiles')
-        .upsert({
-            id: currentUser.id,
-            full_name: fullName,
-            email: newEmail || currentUser.email,
-            chesscom_alias: chesscomAlias,
-            lichess_alias: lichessAlias,
-            updated_at: new Date()
-        });
-
-    if (msgEl) {
-        if (profileError) {
-            msgEl.innerText = profileError.message;
-            msgEl.classList.add('bg-red-500/20', 'text-red-400');
-        } else {
-            msgEl.innerText = "Profile updated successfully!";
-            msgEl.classList.add('bg-green-500/20', 'text-green-400');
-        }
-        msgEl.classList.remove('hidden');
-    }
-}
-
-function checkAuthAndSwitch(targetView) {
-    if (!currentUser) {
-        openAuthModal('login');
-    } else {
-        switchView(targetView);
-    }
-}
-
-function openAuthModal(mode) {
-    authMode = mode;
-    const modal = document.getElementById('auth-modal');
-    if (!modal) return;
-
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    document.getElementById('auth-modal-title').innerText = mode === 'login' ? 'Log In to Kastled' : 'Create Account';
-    document.getElementById('auth-error').classList.add('hidden');
-
-    const nameField = document.getElementById('name-field-container');
-    if (nameField) {
-        if (mode === 'signup') nameField.classList.remove('hidden');
-        else nameField.classList.add('hidden');
-    }
-}
-
-function closeAuthModal() {
-    const modal = document.getElementById('auth-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
-}
-
-async function handleAuthSubmit(e) {
-    e.preventDefault();
-    const email = document.getElementById('auth-email').value;
-    const password = document.getElementById('auth-password').value;
-    const fullName = document.getElementById('auth-name')?.value || '';
-    const errorEl = document.getElementById('auth-error');
-    if (errorEl) errorEl.classList.add('hidden');
-
-    if (!supabaseClient) {
-        alert('Please configure your Supabase credentials.');
-        return;
-    }
-
-    let loginRes = await supabaseClient.auth.signInWithPassword({ email, password });
-
-    if (!loginRes.error) {
-        currentUser = loginRes.data.user;
-        updateAuthHeader();
-        closeAuthModal();
-        switchView('dashboard');
-        return;
-    }
-
-    if (authMode === 'signup' || loginRes.error.message.includes("Invalid login credentials")) {
-        let signupRes = await supabaseClient.auth.signUp({
-            email,
-            password,
-            options: {
-                data: { full_name: fullName }
-            }
-        });
-
-        if (signupRes.error) {
-            if (errorEl) {
-                errorEl.innerText = signupRes.error.message;
-                errorEl.classList.remove('hidden');
-            }
-        } else {
-            currentUser = signupRes.data.user;
-            updateAuthHeader();
-            closeAuthModal();
-            switchView('dashboard');
-        }
-    } else if (errorEl) {
-        errorEl.innerText = loginRes.error.message;
-        errorEl.classList.remove('hidden');
-    }
-}
-
-async function logout() {
-    if (supabaseClient) {
-        await supabaseClient.auth.signOut();
-    }
-    currentUser = null;
-    updateAuthHeader();
-    switchView('landing');
-}
-
-function openImportModal() {
-    const modal = document.getElementById('import-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    }
-}
-
-function closeImportModal() {
-    const modal = document.getElementById('import-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
-}
-
-// --- CHESS.COM IMPORT WORKFLOW ---
-async function openChessComModal() {
-    if (!currentUser) return alert('You must be logged in.');
-
-    const modal = document.getElementById('chesscom-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    }
-
-    const contentEl = document.getElementById('chesscom-content');
-    if (!contentEl) return;
-    contentEl.innerHTML = `<p class="text-sm text-gray-300">Checking your profile for Chess.com alias...</p>`;
-
-    const { data: profile, error } = await supabaseClient
-        .from('profiles')
-        .select('chesscom_alias')
-        .eq('id', currentUser.id)
-        .maybeSingle();
-
-    if (error || !profile || !profile.chesscom_alias) {
-        contentEl.innerHTML = `
-            <div class="space-y-4">
-                <p class="text-sm text-amber-400 font-semibold">No Chess.com alias found in your profile!</p>
-                <p class="text-xs text-gray-300">Please add your Chess.com username in your Profile settings before importing games.</p>
-                <button onclick="closeChessComModal(); switchView('profile');" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Go to Profile Settings</button>
-            </div>
-        `;
-        return;
-    }
-
-    const username = profile.chesscom_alias.trim();
-    contentEl.innerHTML = `<p class="text-sm text-gray-300">Fetching recent archives for <b>${username}</b> from Chess.com...</p>`;
-
-    try {
-        const archivesRes = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
-        const archivesData = await archivesRes.json();
-
-        if (!archivesData.archives || archivesData.archives.length === 0) {
-            contentEl.innerHTML = `<p class="text-sm text-gray-400">No game archives found for Chess.com user: ${username}</p>`;
-            return;
-        }
-
-        const latestArchiveUrl = archivesData.archives[archivesData.archives.length - 1];
-        const monthRes = await fetch(latestArchiveUrl);
-        const monthData = await monthRes.json();
-
-        if (!monthData.games || monthData.games.length === 0) {
-            contentEl.innerHTML = `<p class="text-sm text-gray-400">No games found in the latest archive month.</p>`;
-            return;
-        }
-
-        const { data: existingGames } = await supabaseClient
-            .from('games')
-            .select('pgn')
-            .eq('user_id', currentUser.id);
-
-        const existingPgnSet = new Set(existingGames ? existingGames.map(g => g.pgn.trim()) : []);
-
-        fetchedChessComGames = monthData.games.slice(-20).reverse();
-
-        let listHtml = `
-            <p class="text-xs text-gray-400">Select games to import from <b>${username}'s</b> recent matches:</p>
-            <div class="max-h-64 overflow-y-auto space-y-2 divide-y divide-gray-800 pr-2">
-        `;
-
-        fetchedChessComGames.forEach((g, idx) => {
-            const white = g.white.username;
-            const black = g.black.username;
-            const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
-            const isDuplicate = g.pgn && existingPgnSet.has(g.pgn.trim());
-
-            listHtml += `
-                <div class="pt-2 flex items-center justify-between text-sm">
-                    <label class="flex items-center space-x-3 cursor-pointer">
-                        <input type="checkbox" id="cc-game-${idx}" ${isDuplicate ? 'disabled' : ''} class="w-4 h-4 accent-kastledGold rounded">
-                        <span class="${isDuplicate ? 'text-gray-500 line-through' : 'text-white font-medium'}">
-                            ${white} vs. ${black} 
-                            <span class="text-xs text-gray-500 block">${date} (${g.time_class}) ${isDuplicate ? '- [Already Imported]' : ''}</span>
-                        </span>
-                    </label>
+        <!-- VIEW 1: LANDING PAGE -->
+        <section id="view-landing" class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center py-8">
+            <div class="flex justify-center">
+                <div class="board-border w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
+                    <div id="landing-board" class="chess-grid"></div>
                 </div>
-            `;
-        });
-
-        listHtml += `
             </div>
-            <button onclick="importSelectedChessComGames()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition mt-4" style="background-color:#E5A93C; color:#0B132B;">Import Selected Games</button>
-        `;
-        contentEl.innerHTML = listHtml;
+            <div class="text-center lg:text-left space-y-6">
+                <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-tight text-white">
+                    Experience Chess.<br><span class="text-kastledGold" style="color:#E5A93C;">Redefined on Kastled.</span>
+                </h1>
+                <p class="text-gray-300 text-lg max-w-xl" style="color:#D1D5DB;">
+                    Join a premium platform where strategy meets sophistication. Analyze matches with high-precision engines and track your growth.
+                </p>
+                <div class="gold-divider my-4"></div>
+                <div>
+                    <button onclick="checkAuthAndSwitch('dashboard')" class="w-full sm:w-auto px-10 py-4 rounded-full bg-kastledGold text-kastledNavy font-black text-lg hover:bg-kastledGoldHover transition shadow-2xl tracking-wider" style="background-color:#E5A93C; color:#0B132B;">
+                        Get Started
+                    </button>
+                </div>
+            </div>
+        </section>
 
-    } catch (err) {
-        console.error('Chess.com API error:', err);
-        contentEl.innerHTML = `<p class="text-sm text-red-400">Failed to connect to Chess.com API. Please verify your username.</p>`;
-    }
-}
+        <!-- VIEW 2: SAVED GAMES & IMPORT DASHBOARD -->
+        <section id="view-dashboard" class="w-full max-w-5xl mx-auto hidden space-y-8">
+            <div class="flex flex-col sm:flex-row justify-between items-center bg-gray-900/60 p-6 rounded-2xl border border-gray-800 gap-4" style="background-color: rgba(17,24,39,0.8);">
+                <div>
+                    <h2 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">My Saved Games</h2>
+                    <p class="text-gray-400 text-sm">Import PGN files or review past matches analyzed by Stockfish.</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="openChessComModal()" class="px-5 py-2.5 rounded-xl border border-kastledGold text-kastledGold font-bold text-sm hover:bg-kastledGold/10 transition flex items-center gap-2">
+                        <span>+ Import Chess.com</span>
+                    </button>
+                    <button onclick="openImportModal()" class="px-5 py-2.5 rounded-xl bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition flex items-center gap-2" style="background-color:#E5A93C; color:#0B132B;">
+                        <span>+ Import PGN</span>
+                    </button>
+                    <button onclick="logout()" class="px-4 py-2.5 rounded-xl border border-red-500/50 text-red-400 hover:bg-red-500/10 text-sm transition">Log Out</button>
+                </div>
+            </div>
 
-function closeChessComModal() {
-    const modal = document.getElementById('chesscom-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
-}
+            <div class="bg-gray-900/40 rounded-2xl border border-gray-800 overflow-hidden" style="background-color: rgba(17,24,39,0.5);">
+                <div class="p-4 border-b border-gray-800 font-semibold text-gray-300 grid grid-cols-12 text-sm">
+                    <div class="col-span-5">Opponents / Event</div>
+                    <div class="col-span-3">Result / Date</div>
+                    <div class="col-span-2">Accuracy</div>
+                    <div class="col-span-2 text-right">Action</div>
+                </div>
+                <div id="games-list" class="divide-y divide-gray-800/60">
+                    <!-- Dynamic games list -->
+                </div>
+            </div>
+        </section>
 
-async function importSelectedChessComGames() {
-    if (!currentUser) return;
+        <!-- VIEW 3: GAME REVIEW SCREEN -->
+        <section id="view-review" class="w-full max-w-7xl mx-auto hidden flex flex-col space-y-6">
+            
+            <!-- GAME PERFORMANCE SUMMARY BAR -->
+            <div class="w-full bg-gray-900/80 border border-gray-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center space-x-6">
+                    <div>
+                        <div class="text-xs text-gray-400 uppercase tracking-wider">White Accuracy</div>
+                        <div id="white-accuracy-val" class="text-lg font-bold text-kastledGold" style="color:#E5A93C;">Calculating...</div>
+                    </div>
+                    <div class="h-8 w-px bg-gray-800"></div>
+                    <div>
+                        <div class="text-xs text-gray-400 uppercase tracking-wider">Black Accuracy</div>
+                        <div id="black-accuracy-val" class="text-lg font-bold text-kastledGold" style="color:#E5A93C;">Calculating...</div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <div>
+                        <div class="text-xs text-gray-400 uppercase tracking-wider">Estimated Match ELO</div>
+                        <div id="estimated-elo-val" class="text-lg font-bold text-white">Calculating...</div>
+                    </div>
+                </div>
+            </div>
 
-    const checkboxes = document.querySelectorAll('[id^="cc-game-"]');
-    const selectedGames = [];
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div class="lg:col-span-7 flex flex-col items-center justify-center space-y-4">
+                    <div class="flex items-center space-x-4 w-full max-w-[460px] justify-between">
+                        <span id="review-opponent" class="text-sm font-semibold text-gray-300">Black: Opponent</span>
+                        <span id="eval-score" class="px-3 py-1 bg-gray-800 rounded-lg text-xs font-mono text-kastledGold" style="color:#E5A93C;">Eval: 0.0</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <!-- Eval Bar -->
+                        <div class="w-3 h-[360px] sm:h-[420px] bg-gray-700 rounded-full overflow-hidden flex flex-col justify-end">
+                            <div id="eval-bar-fill" class="w-full bg-kastledGold transition-all duration-300" style="height: 50%; background-color:#E5A93C;"></div>
+                        </div>
+                        <!-- Chess Board -->
+                        <div class="board-border w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
+                            <div id="review-board" class="chess-grid"></div>
+                        </div>
+                    </div>
+                    <span id="review-player" class="text-sm font-semibold text-gray-300">White: You</span>
 
-    checkboxes.forEach((cb, idx) => {
-        if (cb.checked && !cb.disabled) {
-            selectedGames.push(fetchedChessComGames[idx]);
-        }
-    });
+                    <div class="flex items-center space-x-3">
+                        <button onclick="navigateMove(-1)" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold">◀ Prev</button>
+                        <button onclick="navigateMove(1)" class="px-4 py-2 bg-kastledGold text-kastledNavy hover:bg-kastledGoldHover rounded-lg text-sm font-bold" style="background-color:#E5A93C; color:#0B132B;">Next ▶</button>
+                        <button onclick="switchView('dashboard')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-400">Back to Games</button>
+                    </div>
+                </div>
 
-    if (selectedGames.length === 0) {
-        return alert('Please select at least one new game to import.');
-    }
+                <div class="lg:col-span-5 bg-gray-900/60 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between space-y-6" style="background-color: rgba(17,24,39,0.8);">
+                    <div>
+                        <div class="flex justify-between items-center pb-4 border-b border-gray-800">
+                            <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Stockfish Analysis</h3>
+                            <span id="engine-status" class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-bold">Engine Ready</span>
+                        </div>
 
-    let insertCount = 0;
-    for (const g of selectedGames) {
-        const white = g.white.username;
-        const black = g.black.username;
-        const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
-        
-        let res = 'Draw';
-        if (g.white.result === 'win') res = '1-0';
-        else if (g.black.result === 'win') res = '0-1';
+                        <div id="move-review-details" class="mt-6 space-y-4">
+                            <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                                <div class="text-xs text-gray-400 uppercase tracking-wider">Current Position Evaluation</div>
+                                <div id="classification-text" class="text-lg font-bold text-white mt-1">Starting Position</div>
+                            </div>
+                            <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                                <div class="text-xs text-gray-400 uppercase tracking-wider">Stockfish Best Engine Move</div>
+                                <div id="best-move-text" class="text-sm font-mono text-kastledGold mt-1" style="color:#E5A93C;">Calculating...</div>
+                            </div>
+                        </div>
+                    </div>
 
-        const gamePgn = g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`;
-        const generatedAcc = (84 + Math.random() * 12).toFixed(1) + '%';
+                    <div>
+                        <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Move Notation</div>
+                        <div id="moves-list-container" class="h-48 overflow-y-auto bg-gray-950/60 rounded-xl p-3 border border-gray-800 grid grid-cols-2 gap-2 text-sm font-mono">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-        const newGame = {
-            user_id: currentUser.id,
-            opponent: `${white} vs. ${black}`,
-            result: res,
-            date: date,
-            accuracy: generatedAcc,
-            pgn: gamePgn
-        };
+        <!-- VIEW 4: USER PROFILE SETTINGS -->
+        <section id="view-profile" class="w-full max-w-2xl mx-auto hidden space-y-6">
+            <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-8 space-y-6" style="background-color: rgba(17,24,39,0.8);">
+                <div class="flex justify-between items-center pb-4 border-b border-gray-800">
+                    <h2 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">User Profile & Settings</h2>
+                    <button onclick="switchView('dashboard')" class="text-sm text-gray-400 hover:text-white">✕ Back</button>
+                </div>
 
-        const { error } = await supabaseClient.from('games').insert([newGame]);
-        if (!error) insertCount++;
-    }
+                <div id="profile-message" class="text-xs hidden p-3 rounded-xl"></div>
 
-    closeChessComModal();
-    alert(`Successfully imported ${insertCount} new game(s) from Chess.com!`);
-    fetchGamesFromDatabase();
-}
+                <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Full Name</label>
+                        <input type="text" id="profile-name" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Email Address</label>
+                        <input type="email" id="profile-email" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Chess.com Alias</label>
+                        <input type="text" id="profile-chesscom" placeholder="e.g. username" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Lichess Alias</label>
+                        <input type="text" id="profile-lichess" placeholder="e.g. username" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <button type="submit" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Save Changes</button>
+                </form>
+            </div>
+        </section>
 
-function parsePgnHeader(pgn, tag) {
-    const regex = new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`, 'i');
-    const match = pgn.match(regex);
-    return match ? match[1] : null;
-}
+    </main>
 
-async function saveImportedGame() {
-    const pgn = document.getElementById('import-pgn-input').value.trim();
-    const manualOpponent = document.getElementById('import-opponent-input').value.trim();
+    <!-- MODALS -->
+    <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 id="auth-modal-title" class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Log In / Sign Up</h3>
+            <div id="auth-error" class="text-xs text-red-400 hidden"></div>
+            <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div id="name-field-container">
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Full Name</label>
+                    <input type="text" id="auth-name" placeholder="John Doe" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Email Address</label>
+                    <input type="email" id="auth-email" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Password</label>
+                    <input type="password" id="auth-password" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Continue</button>
+            </form>
+        </div>
+    </div>
 
-    if (!pgn) return alert('Please enter valid PGN');
-    if (!currentUser) return alert('You must be logged in to save games.');
+    <!-- PGN IMPORT MODAL -->
+    <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeImportModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import PGN Game</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Opponent / Match Title (Optional)</label>
+                    <input type="text" id="import-opponent-input" placeholder="e.g. Kasparov vs. Deep Blue (Auto-detected if in PGN)" class="w-full px-4 py-2.5 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold mb-3" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Paste PGN Notation</label>
+                    <textarea id="import-pgn-input" rows="6" placeholder="1. e4 e5 2. Nf3 Nc6..." class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;"></textarea>
+                </div>
+                <button onclick="saveImportedGame()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Import & Analyze</button>
+            </div>
+        </div>
+    </div>
 
-    const { data: existing } = await supabaseClient
-        .from('games')
-        .select('id')
-        .eq('user_id', currentUser.id)
-        .eq('pgn', pgn)
-        .maybeSingle();
+    <!-- CHESS.COM IMPORT MODAL -->
+    <div id="chesscom-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-xl w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeChessComModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import from Chess.com</h3>
+            <div id="chesscom-content" class="space-y-4">
+                <p class="text-sm text-gray-300">Fetching your recent games...</p>
+            </div>
+        </div>
+    </div>
 
-    if (existing) {
-        return alert('This exact game PGN is already saved in your database!');
-    }
+    <!-- Bottom Left Page Version Display -->
+    <div class="fixed bottom-3 left-4 text-xs font-mono text-gray-500 z-40 select-none">
+        v1.007
+    </div>
 
-    const whitePlayer = parsePgnHeader(pgn, 'White');
-    const blackPlayer = parsePgnHeader(pgn, 'Black');
-    const eventName = parsePgnHeader(pgn, 'Event');
-    const pgnDate = parsePgnHeader(pgn, 'Date');
-    const pgnResult = parsePgnHeader(pgn, 'Result');
-
-    let opponentName = manualOpponent;
-    if (!opponentName) {
-        if (whitePlayer && blackPlayer) {
-            opponentName = `${whitePlayer} vs. ${blackPlayer}`;
-        } else if (eventName && eventName !== '?') {
-            opponentName = eventName;
-        } else {
-            opponentName = "Analyzed Match";
-        }
-    }
-
-    let gameDate = new Date().toISOString().split('T')[0];
-    if (pgnDate && pgnDate !== '????.??.??' && pgnDate.includes('.')) {
-        gameDate = pgnDate.replace(/\./g, '-');
-    }
-
-    const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
-    const generatedAcc = (82 + Math.random() * 14).toFixed(1) + '%';
-
-    const newGame = {
-        user_id: currentUser.id,
-        opponent: opponentName,
-        result: resultText,
-        date: gameDate,
-        accuracy: generatedAcc,
-        pgn: pgn
-    };
-
-    if (supabaseClient) {
-        const { error } = await supabaseClient.from('games').insert([newGame]);
-        if (error) {
-            console.error('Database save error:', error);
-            alert('Error saving game to database.');
-        }
-    }
-
-    document.getElementById('import-pgn-input').value = '';
-    document.getElementById('import-opponent-input').value = '';
-    closeImportModal();
-    fetchGamesFromDatabase();
-}
-
-async function fetchGamesFromDatabase() {
-    if (!currentUser) return;
-
-    if (supabaseClient) {
-        const { data, error } = await supabaseClient
-            .from('games')
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .order('date', { ascending: false })
-            .order('created_at', { ascending: false });
-
-        if (!error && data) {
-            savedGames = data;
-        } else {
-            console.error('Error fetching games:', error);
-            savedGames = [];
-        }
-    }
-
-    renderGamesList();
-}
-
-function renderGamesList() {
-    const container = document.getElementById('games-list');
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (savedGames.length === 0) {
-        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import PGN" or "+ Import Chess.com" to add some!</div>`;
-        return;
-    }
-
-    savedGames.forEach(game => {
-        const row = document.createElement('div');
-        row.className = "p-4 grid grid-cols-12 items-center text-sm hover:bg-gray-800/40 transition cursor-pointer";
-        row.onclick = () => openGameReview(game);
-        row.innerHTML = `
-            <div class="col-span-5 font-semibold text-white">${game.opponent}</div>
-            <div class="col-span-3 text-gray-400">${game.result} <span class="text-xs block text-gray-500">${game.date}</span></div>
-            <div class="col-span-2 text-kastledGold font-bold" style="color:#E5A93C;">${game.accuracy || '91.2%'}</div>
-            <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span></div>
-        `;
-        container.appendChild(row);
-    });
-}
-
-async function openGameReview(game) {
-    currentActiveGameRecord = game;
-    moveAnalysisData = [];
-
-    if (typeof Chess !== 'undefined') {
-        activeGame = new Chess();
-        activeGame.load_pgn(game.pgn);
-        reviewHistory = activeGame.history({ verbose: true });
-        
-        // Initial baseline eval
-        moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, badge: '', label: 'Starting Position ⚖️' };
-        
-        activeGame.reset();
-    }
-    currentReviewIndex = 0;
-
-    switchView('review');
-}
-
-function updateReviewUI() {
-    if (activeGame) {
-        const boardState = activeGame.board();
-        const gridData = [];
-        for (let r = 0; r < 8; r++) {
-            const row = [];
-            for (let c = 0; c < 8; c++) {
-                const p = boardState[r][c];
-                row.push(p ? (p.color === 'w' ? 'w' : 'b') + p.type.toUpperCase() : '');
-            }
-            gridData.push(row);
-        }
-        renderRawBoard('review-board', gridData);
-    } else {
-        renderRawBoard('review-board', INITIAL_BOARD);
-    }
-
-    let whiteName = "White Player";
-    let blackName = "Black Player";
-    if (currentActiveGameRecord && currentActiveGameRecord.pgn) {
-        whiteName = parsePgnHeader(currentActiveGameRecord.pgn, 'White') || whiteName;
-        blackName = parsePgnHeader(currentActiveGameRecord.pgn, 'Black') || blackName;
-    }
-    
-    const whiteEl = document.getElementById('review-player');
-    const blackEl = document.getElementById('review-opponent');
-    if (whiteEl) whiteEl.innerText = `White: ${whiteName}`;
-    if (blackEl) blackEl.innerText = `Black: ${blackName}`;
-
-    renderMovesList();
-    analyzeCurrentPosition();
-}
-
-function renderMovesList() {
-    const container = document.getElementById('moves-list-container');
-    if (!container) return;
-    container.innerHTML = '';
-
-    let activeMoveElement = null;
-
-    reviewHistory.forEach((move, idx) => {
-        const moveNum = Math.floor(idx / 2) + 1;
-        const isWhite = idx % 2 === 0;
-        
-        if (isWhite) {
-            const labelSpan = document.createElement('div');
-            labelSpan.className = "text-gray-500 font-mono text-xs col-span-2 pt-1";
-            labelSpan.innerText = `${moveNum}.`;
-            container.appendChild(labelSpan);
-        }
-
-        const moveBtn = document.createElement('div');
-        const isCurrent = currentReviewIndex === idx + 1;
-        const analysis = moveAnalysisData[idx + 1];
-        const badge = analysis ? analysis.badge : '';
-        
-        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition flex justify-between items-center ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
-        if (isCurrent) moveBtn.style = 'background-color:#E5A93C; color:#0B132B;';
-        
-        moveBtn.innerHTML = `<span>${move.san}</span><span class="text-xs ml-1">${badge}</span>`;
-        moveBtn.onclick = () => jumpToMove(idx + 1);
-        container.appendChild(moveBtn);
-
-        if (isCurrent) {
-            activeMoveElement = moveBtn;
-        }
-    });
-
-    if (activeMoveElement) {
-        activeMoveElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-}
-
-function jumpToMove(targetIndex) {
-    if (!activeGame) return;
-    activeGame.reset();
-    for (let i = 0; i < targetIndex; i++) {
-        activeGame.move(reviewHistory[i]);
-    }
-    currentReviewIndex = targetIndex;
-    updateReviewUI();
-}
-
-function navigateMove(step) {
-    if (!activeGame) return;
-
-    if (step === 1 && currentReviewIndex < reviewHistory.length) {
-        const move = activeGame.move(reviewHistory[currentReviewIndex]);
-        currentReviewIndex++;
-
-        if (move) {
-            if (activeGame.in_checkmate() || activeGame.in_stalemate() || activeGame.game_over()) {
-                playSound(gameOverSound);
-            } else if (activeGame.in_check()) {
-                playSound(checkSound);
-            } else if (move.captured) {
-                playSound(captureSound);
-            } else {
-                playSound(moveSound);
-            }
-        }
-    } else if (step === -1 && currentReviewIndex > 0) {
-        currentReviewIndex--;
-        activeGame.undo();
-        playSound(moveSound);
-    }
-
-    updateReviewUI();
-}
+    <!-- Cache-Busted Script File Link -->
+    <script src="./js/app.js?v=1.0.12"></script>
+</body>
+</html>
