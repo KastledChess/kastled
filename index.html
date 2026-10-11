@@ -11,7 +11,7 @@
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Custom Stylesheet -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="./css/style.css">
     
     <script>
         tailwind.config = {
@@ -34,8 +34,8 @@
     <!-- Header Navigation -->
     <header class="w-full px-6 py-4 flex items-center justify-between border-b border-gray-800">
         <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('landing')">
-            <img src="Assets/logo.png" alt="Kastled Logo" class="h-16 w-auto object-contain" 
-                 onerror="this.onerror=null; this.src='assets/logo.png';">
+            <img src="./Assets/logo.png" alt="Kastled Logo" class="h-16 w-auto object-contain" 
+                 onerror="this.onerror=null; this.src='./assets/logo.png';">
         </div>
         <nav class="hidden md:flex items-center space-x-8 text-gray-300">
             <a href="#" onclick="switchView('landing')" class="hover:text-kastledGold transition">Learn</a>
@@ -160,4 +160,42 @@
     <!-- MODALS -->
     <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
         <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 relative" style="background-color:#111827;">
-            <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-
+            <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 id="auth-modal-title" class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Log In / Sign Up</h3>
+            <div id="auth-error" class="text-xs text-red-400 hidden"></div>
+            <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div id="name-field-container">
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Full Name</label>
+                    <input type="text" id="auth-name" placeholder="John Doe" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Email Address</label>
+                    <input type="email" id="auth-email" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Password</label>
+                    <input type="password" id="auth-password" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Continue</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeImportModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import Game (PGN)</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Paste PGN Notation</label>
+                    <textarea id="import-pgn-input" rows="6" placeholder="1. e4 e5 2. Nf3 Nc6..." class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;"></textarea>
+                </div>
+                <button onclick="saveImportedGame()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Import & Analyze</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script File Link -->
+    <script src="./js/app.js"></script>
+</body>
+</html>
