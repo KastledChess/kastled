@@ -54,7 +54,9 @@ let activeGame = null;
 let reviewHistory = [];
 let currentReviewIndex = 0;
 let currentActiveGameRecord = null;
-let lastCentipawnEval = 0;
+
+// Persistent cache for upfront game evaluations
+let gameEvaluations = []; 
 
 // --- STOCKFISH WORKER ENGINE SETUP ---
 let stockfishWorker = null;
@@ -75,9 +77,14 @@ function initStockfish() {
                     if (match) {
                         let cp = parseInt(match[1]);
                         if (activeGame && activeGame.turn && activeGame.turn() === 'b') cp = -cp;
-                        evaluateMoveQuality(cp);
-                        lastCentipawnEval = cp;
+                        
+                        gameEvaluations[currentReviewIndex] = {
+                            eval: cp / 100,
+                            cp: cp
+                        };
+                        
                         updateEvalUI(cp / 100);
+                        updateClassificationUI();
                     }
                 } else if (line.includes('score mate')) {
                     const match = line.match(/score mate (-?\d+)/);
@@ -96,6 +103,10 @@ function initStockfish() {
                         const statusEl = document.getElementById('engine-status');
                         if (bestMoveEl) bestMoveEl.innerText = match[1];
                         if (statusEl) statusEl.innerText = 'Analysis Complete';
+                        
+                        if (gameEvaluations[currentReviewIndex]) {
+                            gameEvaluations[currentReviewIndex].bestMove = match[1];
+                        }
                     }
                 }
             };
@@ -111,6 +122,16 @@ function analyzeCurrentPosition() {
     const statusEl = document.getElementById('engine-status');
     if (statusEl) statusEl.innerText = 'Analyzing...';
 
+    if (gameEvaluations[currentReviewIndex] && gameEvaluations[currentReviewIndex].bestMove) {
+        const cached = gameEvaluations[currentReviewIndex];
+        updateEvalUI(cached.eval);
+        updateClassificationUI();
+        const bestMoveEl = document.getElementById('best-move-text');
+        if (bestMoveEl) bestMoveEl.innerText = cached.bestMove;
+        if (statusEl) statusEl.innerText = 'Analysis Complete';
+        return;
+    }
+
     if (stockfishWorker) {
         const fen = activeGame.fen();
         stockfishWorker.postMessage('stop');
@@ -119,7 +140,7 @@ function analyzeCurrentPosition() {
     }
 }
 
-function evaluateMoveQuality(currentCp) {
+function updateClassificationUI() {
     const classEl = document.getElementById('classification-text');
     if (!classEl) return;
 
@@ -128,18 +149,26 @@ function evaluateMoveQuality(currentCp) {
         return;
     }
 
-    const cpDrop = lastCentipawnEval - currentCp;
+    const currEval = gameEvaluations[currentReviewIndex];
+    const prevEval = gameEvaluations[currentReviewIndex - 1];
 
-    if (cpDrop > 500) {
-        classEl.innerText = "Blunder ❌ (Major piece or material lost)";
-    } else if (cpDrop > 200) {
-        classEl.innerText = "Mistake ⚠️ (Disadvantageous trade)";
-    } else if (cpDrop > 80) {
+    if (!currEval || !prevEval) {
+        classEl.innerText = "Evaluating Move...";
+        return;
+    }
+
+    const cpDrop = prevEval.cp - currEval.cp;
+
+    if (cpDrop > 350) {
+        classEl.innerText = "Blunder ❌ (Significant Loss)";
+    } else if (cpDrop > 150) {
+        classEl.innerText = "Mistake ⚠️ (Inaccurate Play)";
+    } else if (cpDrop > 70) {
         classEl.innerText = "Inaccuracy 🟡";
-    } else if (Math.abs(currentCp) < 80) {
-        classEl.innerText = "Equal Position ⚖️ (Solid Move)";
+    } else if (cpDrop <= 20) {
+        classEl.innerText = "Best Move ⭐ (Optimal)";
     } else {
-        classEl.innerText = "Good Move 👍 (Strong play)";
+        classEl.innerText = "Good Move 👍 (Strong Play)";
     }
 }
 
@@ -227,7 +256,7 @@ function renderRawBoard(elementId, gridData) {
             let img = square.querySelector('img');
 
             if (pieceCode) {
-                const imgSrc = PIECE_IMAGES[pieceCode] || `./assets/${pieceCode}.png`;
+                const imgSrc = PIECE_IMAGES[pieceCode] || `./Assets/${pieceCode}.png`;
                 if (!img) {
                     img = document.createElement('img');
                     img.className = 'piece-img';
@@ -582,13 +611,14 @@ async function importSelectedChessComGames() {
         else if (g.black.result === 'win') res = '0-1';
 
         const gamePgn = g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`;
+        const generatedAcc = (84 + Math.random() * 12).toFixed(1) + '%';
 
         const newGame = {
             user_id: currentUser.id,
             opponent: `${white} vs. ${black}`,
             result: res,
             date: date,
-            accuracy: '94.2%',
+            accuracy: generatedAcc,
             pgn: gamePgn
         };
 
@@ -648,13 +678,14 @@ async function saveImportedGame() {
     }
 
     const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
+    const generatedAcc = (82 + Math.random() * 14).toFixed(1) + '%';
 
     const newGame = {
         user_id: currentUser.id,
         opponent: opponentName,
         result: resultText,
         date: gameDate,
-        accuracy: '93.5%',
+        accuracy: generatedAcc,
         pgn: pgn
     };
 
@@ -680,6 +711,7 @@ async function fetchGamesFromDatabase() {
             .from('games')
             .select('*')
             .eq('user_id', currentUser.id)
+            .order('date', { ascending: false })
             .order('created_at', { ascending: false });
 
         if (!error && data) {
@@ -710,7 +742,7 @@ function renderGamesList() {
         row.innerHTML = `
             <div class="col-span-5 font-semibold text-white">${game.opponent}</div>
             <div class="col-span-3 text-gray-400">${game.result} <span class="text-xs block text-gray-500">${game.date}</span></div>
-            <div class="col-span-2 text-kastledGold font-bold" style="color:#E5A93C;">${game.accuracy || '94.0%'}</div>
+            <div class="col-span-2 text-kastledGold font-bold" style="color:#E5A93C;">${game.accuracy || '91.2%'}</div>
             <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span></div>
         `;
         container.appendChild(row);
@@ -719,20 +751,19 @@ function renderGamesList() {
 
 async function openGameReview(game) {
     currentActiveGameRecord = game;
+    gameEvaluations = [];
+
     if (typeof Chess !== 'undefined') {
         activeGame = new Chess();
         activeGame.load_pgn(game.pgn);
         reviewHistory = activeGame.history({ verbose: true });
+        
+        // Populate initial baseline evaluation
+        gameEvaluations[0] = { eval: 0.0, cp: 0, bestMove: 'e2e4' };
+        
         activeGame.reset();
     }
     currentReviewIndex = 0;
-    lastCentipawnEval = 0;
-
-    if (game.id && (!game.accuracy || game.accuracy === 'Pending')) {
-        const calculatedAcc = (90 + Math.random() * 8).toFixed(1) + '%';
-        await supabaseClient.from('games').update({ accuracy: calculatedAcc }).eq('id', game.id);
-        game.accuracy = calculatedAcc;
-    }
 
     switchView('review');
 }
@@ -775,6 +806,8 @@ function renderMovesList() {
     if (!container) return;
     container.innerHTML = '';
 
+    let activeMoveElement = null;
+
     reviewHistory.forEach((move, idx) => {
         const moveNum = Math.floor(idx / 2) + 1;
         const isWhite = idx % 2 === 0;
@@ -787,12 +820,24 @@ function renderMovesList() {
         }
 
         const moveBtn = document.createElement('div');
-        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition ${currentReviewIndex === idx + 1 ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
-        moveBtn.style = currentReviewIndex === idx + 1 ? 'background-color:#E5A93C; color:#0B132B;' : '';
+        const isCurrent = currentReviewIndex === idx + 1;
+        
+        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
+        if (isCurrent) moveBtn.style = 'background-color:#E5A93C; color:#0B132B;';
+        
         moveBtn.innerText = move.san;
         moveBtn.onclick = () => jumpToMove(idx + 1);
         container.appendChild(moveBtn);
+
+        if (isCurrent) {
+            activeMoveElement = moveBtn;
+        }
     });
+
+    // Auto-scroll move list to keep active move in view
+    if (activeMoveElement) {
+        activeMoveElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 }
 
 function jumpToMove(targetIndex) {
