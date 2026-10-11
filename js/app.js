@@ -169,7 +169,7 @@ function updateAuthHeader() {
 
     if (currentUser) {
         container.innerHTML = `
-            <div class="flex items-center space-x-3 bg-gray-900/80 px-4 py-2 rounded-full border border-gray-800">
+            <div class="flex items-center space-x-3 bg-gray-900/80 px-4 py-2 rounded-full border border-gray-800 cursor-pointer" onclick="checkAuthAndSwitch('profile')">
                 <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
                 <span class="text-xs text-gray-300 font-mono">${currentUser.email}</span>
             </div>
@@ -210,6 +210,7 @@ function switchView(viewName) {
     document.getElementById('view-landing').classList.add('hidden');
     document.getElementById('view-dashboard').classList.add('hidden');
     document.getElementById('view-review').classList.add('hidden');
+    document.getElementById('view-profile').classList.add('hidden');
 
     if(viewName === 'landing') {
         document.getElementById('view-landing').classList.remove('hidden');
@@ -222,6 +223,69 @@ function switchView(viewName) {
         gameStartSound.currentTime = 0;
         gameStartSound.play().catch(() => {});
         updateReviewUI();
+    } else if(viewName === 'profile') {
+        document.getElementById('view-profile').classList.remove('hidden');
+        loadProfileData();
+    }
+}
+
+async function loadProfileData() {
+    if (!currentUser || !supabaseClient) return;
+
+    document.getElementById('profile-email').value = currentUser.email || '';
+
+    const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .single();
+
+    if (!error && data) {
+        document.getElementById('profile-name').value = data.full_name || '';
+        document.getElementById('profile-chesscom').value = data.chesscom_alias || '';
+        document.getElementById('profile-lichess').value = data.lichess_alias || '';
+    }
+}
+
+async function handleProfileUpdate(e) {
+    e.preventDefault();
+    if (!currentUser || !supabaseClient) return;
+
+    const fullName = document.getElementById('profile-name').value.trim();
+    const newEmail = document.getElementById('profile-email').value.trim();
+    const chesscomAlias = document.getElementById('profile-chesscom').value.trim();
+    const lichessAlias = document.getElementById('profile-lichess').value.trim();
+    const msgEl = document.getElementById('profile-message');
+
+    msgEl.classList.remove('hidden', 'bg-red-500/20', 'text-red-400', 'bg-green-500/20', 'text-green-400');
+
+    // Update Auth email if changed
+    if (newEmail && newEmail !== currentUser.email) {
+        const { error: emailError } = await supabaseClient.auth.updateUser({ email: newEmail });
+        if (emailError) {
+            msgEl.innerText = emailError.message;
+            msgEl.classList.add('bg-red-500/20', 'text-red-400');
+            return;
+        }
+    }
+
+    // Update profiles table
+    const { error: profileError } = await supabaseClient
+        .from('profiles')
+        .upsert({
+            id: currentUser.id,
+            full_name: fullName,
+            chesscom_alias: chesscomAlias,
+            lichess_alias: lichessAlias,
+            updated_at: new Date()
+        });
+
+    if (profileError) {
+        msgEl.innerText = profileError.message;
+        msgEl.classList.add('bg-red-500/20', 'text-red-400');
+    } else {
+        msgEl.innerText = "Profile updated successfully!";
+        msgEl.classList.add('bg-green-500/20', 'text-green-400');
     }
 }
 
@@ -297,7 +361,7 @@ async function handleAuthSubmit(e) {
         }
     } else {
         errorEl.innerText = loginRes.error.message;
-        errorEl.classList.remove('hidden');
+        errorEl.classList.add('hidden');
     }
 }
 
@@ -334,14 +398,12 @@ async function saveImportedGame() {
     if (!pgn) return alert('Please enter valid PGN');
     if (!currentUser) return alert('You must be logged in to save games.');
 
-    // 1. Extract metadata directly from the PGN tags
     const whitePlayer = parsePgnHeader(pgn, 'White');
     const blackPlayer = parsePgnHeader(pgn, 'Black');
     const eventName = parsePgnHeader(pgn, 'Event');
     const pgnDate = parsePgnHeader(pgn, 'Date');
     const pgnResult = parsePgnHeader(pgn, 'Result');
 
-    // 2. Determine Opponent/Match Name
     let opponentName = manualOpponent;
     if (!opponentName) {
         if (whitePlayer && blackPlayer) {
@@ -353,15 +415,13 @@ async function saveImportedGame() {
         }
     }
 
-    // 3. Format Date
     let gameDate = new Date().toISOString().split('T')[0];
     if (pgnDate && pgnDate !== '????.??.??' && pgnDate.includes('.')) {
         gameDate = pgnDate.replace(/\./g, '-');
     }
 
-    // 4. Format Result & Accuracy
     const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
-    const accuracyValue = 'Pending'; // Shows pending until full analysis runs
+    const accuracyValue = 'Pending';
 
     const newGame = {
         user_id: currentUser.id,
@@ -380,7 +440,6 @@ async function saveImportedGame() {
         }
     }
 
-    // Reset inputs and close modal
     document.getElementById('import-pgn-input').value = '';
     document.getElementById('import-opponent-input').value = '';
     closeImportModal();
@@ -413,7 +472,7 @@ function renderGamesList() {
     container.innerHTML = '';
 
     if (savedGames.length === 0) {
-        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import New Game" to add one!</div>`;
+        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import PGN" to add one!</div>`;
         return;
     }
 
