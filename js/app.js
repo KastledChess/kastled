@@ -60,6 +60,7 @@ let moveAnalysisData = [];
 let isBatchAnalyzing = false;
 let batchAnalysisIndex = 0;
 let batchResolveCallback = null;
+let batchTimeoutTimer = null;
 
 // --- STOCKFISH WORKER ENGINE SETUP ---
 let stockfishWorker = null;
@@ -98,6 +99,7 @@ function initStockfish() {
 
                 if (line.includes('bestmove')) {
                     if (isBatchAnalyzing) {
+                        if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
                         advanceBatchAnalysis();
                     } else {
                         const match = line.match(/bestmove\s+(\w+)/);
@@ -174,7 +176,10 @@ async function runFullGameAnalysis() {
     batchAnalysisIndex = 0;
 
     const modal = document.getElementById('analysis-modal');
-    if (modal) modal.classList.remove('hidden');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
 
     activeGame.reset();
     moveAnalysisData = [];
@@ -192,11 +197,11 @@ function analyzeNextBatchMove() {
     const progressBar = document.getElementById('analysis-progress-bar');
 
     if (batchAnalysisIndex >= totalMoves) {
-        finishBatchAnalysis();
+        onAnalysisComplete();
         return;
     }
 
-    const pct = Math.round(((batchAnalysisIndex + 1) / totalMoves) * 100);
+    const pct = Math.min(100, Math.round(((batchAnalysisIndex + 1) / totalMoves) * 100));
     if (progressText) progressText.innerText = `Evaluating move ${batchAnalysisIndex + 1} of ${totalMoves}... (${pct}%)`;
     if (progressBar) progressBar.style.width = `${pct}%`;
 
@@ -210,12 +215,17 @@ function analyzeNextBatchMove() {
         const fen = activeGame.fen();
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position fen ${fen}`);
-        stockfishWorker.postMessage('go depth 8'); // Quick evaluation depth per move
+        stockfishWorker.postMessage('go depth 8');
+
+        // Safety fallback timeout
+        batchTimeoutTimer = setTimeout(() => {
+            advanceBatchAnalysis();
+        }, 400);
     } else {
         setTimeout(() => {
             storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 2);
             advanceBatchAnalysis();
-        }, 50);
+        }, 40);
     }
 }
 
@@ -225,13 +235,17 @@ function advanceBatchAnalysis() {
     }
 }
 
-async function finishBatchAnalysis() {
+// PROCEDURE THAT FIRES EXACTLY WHEN ANALYSIS HITS 100%
+function onAnalysisComplete() {
     isBatchAnalyzing = false;
-    
-    // Hide analysis modal immediately
-    const modal = document.getElementById('analysis-modal');
-    if (modal) modal.classList.add('hidden');
+    if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
 
+    const progressText = document.getElementById('analysis-progress-text');
+    const progressBar = document.getElementById('analysis-progress-bar');
+    if (progressText) progressText.innerText = 'Analysis Complete! Loading Review...';
+    if (progressBar) progressBar.style.width = '100%';
+
+    // Calculate Game-Wide Metrics
     let whiteLosses = [];
     let blackLosses = [];
 
@@ -268,27 +282,37 @@ async function finishBatchAnalysis() {
         currentActiveGameRecord.black_elo = bEloStr;
         currentActiveGameRecord.is_reviewed = true;
 
+        // Async Database Update
         if (supabaseClient) {
-            try {
-                await supabaseClient
-                    .from('games')
-                    .update({
-                        accuracy: wAccStr,
-                        black_accuracy: bAccStr,
-                        white_elo: wEloStr,
-                        black_elo: bEloStr,
-                        is_reviewed: true
-                    })
-                    .eq('id', currentActiveGameRecord.id);
-            } catch (err) {
-                console.warn("Database sync deferred:", err);
-            }
+            supabaseClient
+                .from('games')
+                .update({
+                    accuracy: wAccStr,
+                    black_accuracy: bAccStr,
+                    white_elo: wEloStr,
+                    black_elo: bEloStr,
+                    is_reviewed: true
+                })
+                .eq('id', currentActiveGameRecord.id)
+                .then(() => {})
+                .catch(err => console.warn("Database sync deferred:", err));
         }
     }
 
-    if (batchResolveCallback) {
-        batchResolveCallback();
-    }
+    // Hide Modal Immediately & Transition
+    setTimeout(() => {
+        const modal = document.getElementById('analysis-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        if (batchResolveCallback) {
+            const resolve = batchResolveCallback;
+            batchResolveCallback = null;
+            resolve();
+        }
+    }, 200);
 }
 
 async function openGameReview(game) {
@@ -314,7 +338,7 @@ async function openGameReview(game) {
     if (wLabelEl) wLabelEl.innerText = `White (${whiteName})`;
     if (bLabelEl) bLabelEl.innerText = `Black (${blackName})`;
 
-    // Run Upfront Analysis if game is not reviewed yet
+    // Run Upfront Analysis if unreviewed
     if (!game.is_reviewed || game.accuracy === 'Pending') {
         await runFullGameAnalysis();
     }
@@ -325,10 +349,10 @@ async function openGameReview(game) {
     const wEloEl = document.getElementById('white-elo-val');
     const bEloEl = document.getElementById('black-elo-val');
 
-    if (wAccEl) wAccEl.innerText = currentActiveGameRecord.accuracy;
-    if (bAccEl) bAccEl.innerText = currentActiveGameRecord.black_accuracy;
-    if (wEloEl) wEloEl.innerText = currentActiveGameRecord.white_elo;
-    if (bEloEl) bEloEl.innerText = currentActiveGameRecord.black_elo;
+    if (wAccEl) wAccEl.innerText = currentActiveGameRecord.accuracy || 'N/A';
+    if (bAccEl) bAccEl.innerText = currentActiveGameRecord.black_accuracy || 'N/A';
+    if (wEloEl) wEloEl.innerText = currentActiveGameRecord.white_elo || 'N/A';
+    if (bEloEl) bEloEl.innerText = currentActiveGameRecord.black_elo || 'N/A';
 
     switchView('review');
 }
