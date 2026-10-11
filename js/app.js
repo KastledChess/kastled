@@ -233,16 +233,21 @@ function switchView(viewName) {
 async function loadProfileData() {
     if (!currentUser || !supabaseClient) return;
 
+    // Reset input fields to current user defaults
     document.getElementById('profile-email').value = currentUser.email || '';
+    document.getElementById('profile-name').value = currentUser.user_metadata?.full_name || '';
+    document.getElementById('profile-chesscom').value = '';
+    document.getElementById('profile-lichess').value = '';
 
+    // Strictly fetch profile row matching current user ID
     const { data, error } = await supabaseClient
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
-        .single();
+        .maybeSingle();
 
     if (!error && data) {
-        document.getElementById('profile-name').value = data.full_name || '';
+        document.getElementById('profile-name').value = data.full_name || currentUser.user_metadata?.full_name || '';
         document.getElementById('profile-chesscom').value = data.chesscom_alias || '';
         document.getElementById('profile-lichess').value = data.lichess_alias || '';
     }
@@ -265,6 +270,7 @@ async function handleProfileUpdate(e) {
         if (emailError) {
             msgEl.innerText = emailError.message;
             msgEl.classList.add('bg-red-500/20', 'text-red-400');
+            msgEl.classList.remove('hidden');
             return;
         }
     }
@@ -287,6 +293,7 @@ async function handleProfileUpdate(e) {
         msgEl.innerText = "Profile updated successfully!";
         msgEl.classList.add('bg-green-500/20', 'text-green-400');
     }
+    msgEl.classList.remove('hidden');
 }
 
 function checkAuthAndSwitch(targetView) {
@@ -360,7 +367,7 @@ async function handleAuthSubmit(e) {
         }
     } else {
         errorEl.innerText = loginRes.error.message;
-        errorEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
     }
 }
 
@@ -396,7 +403,7 @@ async function openChessComModal() {
         .from('profiles')
         .select('chesscom_alias')
         .eq('id', currentUser.id)
-        .single();
+        .maybeSingle();
 
     if (error || !profile || !profile.chesscom_alias) {
         contentEl.innerHTML = `
@@ -430,7 +437,6 @@ async function openChessComModal() {
             return;
         }
 
-        // Fetch user's existing games from database to check for duplicates
         const { data: existingGames } = await supabaseClient
             .from('games')
             .select('pgn')
@@ -527,7 +533,6 @@ async function importSelectedChessComGames() {
     fetchGamesFromDatabase();
 }
 
-// Helper to extract PGN Header Tags
 function parsePgnHeader(pgn, tag) {
     const regex = new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`, 'i');
     const match = pgn.match(regex);
@@ -541,13 +546,12 @@ async function saveImportedGame() {
     if (!pgn) return alert('Please enter valid PGN');
     if (!currentUser) return alert('You must be logged in to save games.');
 
-    // Check if this exact PGN is already saved for this user
     const { data: existing } = await supabaseClient
         .from('games')
         .select('id')
         .eq('user_id', currentUser.id)
         .eq('pgn', pgn)
-        .single();
+        .maybeSingle();
 
     if (existing) {
         return alert('This exact game PGN is already saved in your database!');
@@ -698,13 +702,4 @@ function navigateMove(step) {
                 moveSound.play().catch(() => {});
             }
         }
-    } else if (step === -1 && currentReviewIndex > 0) {
-        currentReviewIndex--;
-        activeGame.undo();
-
-        moveSound.currentTime = 0;
-        moveSound.play().catch(() => {});
     }
-
-    updateReviewUI();
-}
