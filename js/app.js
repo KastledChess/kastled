@@ -7,33 +7,31 @@ const supabaseClient = (typeof supabase !== 'undefined' && SUPABASE_URL !== "")
     : null;
 
 const PIECE_IMAGES = {
-    'wP': './assets/wP.png',
-    'wN': './assets/wN.png',
-    'wB': './assets/wB.png',
-    'wR': './assets/wR.png',
-    'wQ': './assets/wQ.png',
-    'wK': './assets/wK.png',
-    'bP': './assets/bP.png',
-    'bN': './assets/bN.png',
-    'bB': './assets/bB.png',
-    'bR': './assets/bR.png',
-    'bQ': './assets/bQ.png',
-    'bK': './assets/bK.png'
+    'wP': './Assets/wP.png',
+    'wN': './Assets/wN.png',
+    'wB': './Assets/wB.png',
+    'wR': './Assets/wR.png',
+    'wQ': './Assets/wQ.png',
+    'wK': './Assets/wK.png',
+    'bP': './Assets/bP.png',
+    'bN': './Assets/bN.png',
+    'bB': './Assets/bB.png',
+    'bR': './Assets/bR.png',
+    'bQ': './Assets/bQ.png',
+    'bK': './Assets/bK.png'
 };
 
 // --- AUDIO SOUND EFFECTS ---
-const gameStartSound = new Audio('./assets/game-start.wav');
-const moveSound = new Audio('./assets/move.wav');
-const captureSound = new Audio('./assets/capture.wav');
-const checkSound = new Audio('./assets/check.wav');
-const gameOverSound = new Audio('./assets/game-over.wav');
+const gameStartSound = new Audio('./Assets/game-start.wav');
+const moveSound = new Audio('./Assets/move.wav');
+const captureSound = new Audio('./Assets/capture.wav');
+const checkSound = new Audio('./Assets/check.wav');
+const gameOverSound = new Audio('./Assets/game-over.wav');
 
 function playSound(audioObj) {
     if (!audioObj) return;
     audioObj.currentTime = 0;
-    audioObj.play().catch(() => {
-        // Silently handle browser autoplay restrictions
-    });
+    audioObj.play().catch(() => {});
 }
 
 const INITIAL_BOARD = [
@@ -76,7 +74,6 @@ function initStockfish() {
                     const match = line.match(/score cp (-?\d+)/);
                     if (match) {
                         let cp = parseInt(match[1]);
-                        // Normalize cp from white's perspective
                         if (activeGame && activeGame.turn && activeGame.turn() === 'b') cp = -cp;
                         evaluateMoveQuality(cp);
                         lastCentipawnEval = cp;
@@ -205,7 +202,6 @@ function updateAuthHeader() {
     }
 }
 
-// Optimized render board without DOM clearing (prevents flashing/flickering)
 function renderRawBoard(elementId, gridData) {
     const container = document.getElementById(elementId);
     if (!container) return;
@@ -231,23 +227,17 @@ function renderRawBoard(elementId, gridData) {
             let img = square.querySelector('img');
 
             if (pieceCode) {
-                const imgSrc = PIECE_IMAGES[pieceCode] || `./Assets/${pieceCode}.png`;
+                const imgSrc = PIECE_IMAGES[pieceCode] || `./assets/${pieceCode}.png`;
                 if (!img) {
                     img = document.createElement('img');
                     img.className = 'piece-img';
-                    square.appendChild(img);
-                }
-                if (!img.src.includes(pieceCode.toLowerCase())) {
                     img.src = imgSrc;
-                    img.onerror = function() {
-                        this.onerror = null;
-                        this.src = `./Assets/${pieceCode}.png`;
-                    };
+                    square.appendChild(img);
+                } else if (!img.src.includes(pieceCode)) {
+                    img.src = imgSrc;
                 }
-            } else {
-                if (img) {
-                    square.removeChild(img);
-                }
+            } else if (img) {
+                img.remove();
             }
         }
     }
