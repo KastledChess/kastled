@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kastled - Chess Redefined</title>
-    <!-- Tailwind CSS for styling -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chess.js for game logic -->
+    <!-- Chess.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script>
         tailwind.config = {
@@ -32,6 +32,29 @@
             border: 4px solid #E5A93C;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
         }
+        /* Strict square styling */
+        .chess-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 100%;
+            height: 100%;
+            aspect-ratio: 1 / 1;
+        }
+        .square {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .piece-img {
+            max-width: 80%;
+            max-height: 80%;
+            object-fit: contain;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="bg-kastledNavy text-white min-h-screen font-sans flex flex-col justify-between">
@@ -39,8 +62,7 @@
     <!-- Header Navigation -->
     <header class="w-full px-6 py-4 flex items-center justify-between border-b border-gray-800">
         <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('landing')">
-            <!-- Official Kastled Paid Logo with Direct Inline Base64 Fallback -->
-            <img id="kastled-main-logo" src="assets/Logo new.png" alt="Kastled Logo" class="h-10 w-auto object-contain" 
+            <img src="assets/Logo new.png" alt="Kastled Logo" class="h-10 w-auto object-contain" 
                  onerror="this.onerror=null; this.src='assets/logo.png'; this.onerror=function(){this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 220 50\' fill=\'none\'><path d=\'M8 10h22v6H8zM11 16h16v8H11zM8 24h22v16H8z\' fill=\'%23E5A93C\'/><text x=\'42\' y=\'34\' font-family=\'sans-serif\' font-weight=\'bold\' font-size=\'26\' fill=\'%23E5A93C\' letter-spacing=\'2\'>KASTLED</text></svg>';}">
         </div>
         <nav class="hidden md:flex items-center space-x-8 text-gray-300">
@@ -61,8 +83,8 @@
         <!-- VIEW 1: LANDING PAGE -->
         <section id="view-landing" class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center py-8">
             <div class="flex justify-center">
-                <div class="board-border rounded-lg p-2 bg-gray-900 inline-block">
-                    <div id="landing-board" class="grid grid-cols-8 w-[340px] h-[340px] sm:w-[420px] sm:h-[420px]"></div>
+                <div class="board-border rounded-lg p-2 bg-gray-900 w-[340px] h-[340px] sm:w-[420px] sm:h-[420px]">
+                    <div id="landing-board" class="chess-grid"></div>
                 </div>
             </div>
             <div class="text-center lg:text-left space-y-6">
@@ -104,7 +126,7 @@
                     <div class="col-span-2 text-right">Action</div>
                 </div>
                 <div id="games-list" class="divide-y divide-gray-800/60">
-                    <!-- Dynamic games injected here -->
+                    <!-- Dynamic games list -->
                 </div>
             </div>
         </section>
@@ -119,12 +141,12 @@
                 </div>
                 <div class="flex items-center gap-3">
                     <!-- Eval Bar -->
-                    <div class="w-3 h-[420px] bg-gray-700 rounded-full overflow-hidden flex flex-col justify-end">
+                    <div class="w-3 h-[360px] sm:h-[420px] bg-gray-700 rounded-full overflow-hidden flex flex-col justify-end">
                         <div id="eval-bar-fill" class="w-full bg-kastledGold transition-all duration-300" style="height: 50%;"></div>
                     </div>
                     <!-- Chess Board -->
-                    <div class="board-border rounded-lg p-2 bg-gray-900 inline-block">
-                        <div id="review-board" class="grid grid-cols-8 w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]"></div>
+                    <div class="board-border rounded-lg p-2 bg-gray-900 w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
+                        <div id="review-board" class="chess-grid"></div>
                     </div>
                 </div>
                 <span id="review-player" class="text-sm font-semibold text-gray-300">White: You</span>
@@ -145,11 +167,10 @@
                         <span id="move-accuracy-badge" class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-bold">Accuracy: 94.2%</span>
                     </div>
 
-                    <!-- Current Move Details -->
                     <div id="move-review-details" class="mt-6 space-y-4">
                         <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
                             <div class="text-xs text-gray-400 uppercase tracking-wider">Move Classification</div>
-                            <div id="classification-text" class="text-lg font-bold text-white mt-1">Select a move to analyze</div>
+                            <div id="classification-text" class="text-lg font-bold text-white mt-1">Starting Position</div>
                         </div>
                         <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
                             <div class="text-xs text-gray-400 uppercase tracking-wider">Best Alternative (Stockfish)</div>
@@ -158,11 +179,9 @@
                     </div>
                 </div>
 
-                <!-- Move History List -->
                 <div>
                     <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Move List</div>
                     <div id="moves-list-container" class="h-48 overflow-y-auto bg-gray-950/60 rounded-xl p-3 border border-gray-800 grid grid-cols-2 gap-2 text-sm font-mono">
-                        <!-- Moves list injected here -->
                     </div>
                 </div>
             </div>
@@ -170,7 +189,7 @@
 
     </main>
 
-    <!-- MODAL: LOGIN / SIGNUP -->
+    <!-- MODALS -->
     <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
         <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 relative">
             <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
@@ -189,7 +208,6 @@
         </div>
     </div>
 
-    <!-- MODAL: IMPORT GAME -->
     <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
         <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative">
             <button onclick="closeImportModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
@@ -204,23 +222,33 @@
         </div>
     </div>
 
-    <!-- Application Script -->
     <script>
-        // Custom Piece Asset Mapping
+        // Matching your short file names directly inside assets/
         const PIECE_IMAGES = {
-            'wP': 'assets/White pawn.png',
-            'wN': 'assets/White knight.png',
-            'wB': 'assets/White bishop.png',
-            'wR': 'assets/black rook_2.png',
-            'wQ': 'assets/Black queen_2.png',
-            'wK': 'assets/White king.png',
-            'bP': 'assets/Black pawn.png',
-            'bN': 'assets/Black knight.png',
-            'bB': 'assets/Black bishop.png',
-            'bR': 'assets/black rook.png',
-            'bQ': 'assets/Black queen.png',
-            'bK': 'assets/Black king.png'
+            'wP': 'assets/wP.png',
+            'wN': 'assets/wN.png',
+            'wB': 'assets/wB.png',
+            'wR': 'assets/wR.png',
+            'wQ': 'assets/wQ.png',
+            'wK': 'assets/wK.png',
+            'bP': 'assets/bP.png',
+            'bN': 'assets/bN.png',
+            'bB': 'assets/bB.png',
+            'bR': 'assets/bR.png',
+            'bQ': 'assets/bQ.png',
+            'bK': 'assets/bK.png'
         };
+
+        const INITIAL_BOARD = [
+            ['bR','bN','bB','bQ','bK','bB','bN','bR'],
+            ['bP','bP','bP','bP','bP','bP','bP','bP'],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['wP','wP','wP','wP','wP','wP','wP','wP'],
+            ['wR','wN','wB','wQ','wK','wB','wN','wR']
+        ];
 
         let currentUser = localStorage.getItem('kastled_user') || null;
         let savedGames = JSON.parse(localStorage.getItem('kastled_games')) || [
@@ -228,13 +256,36 @@
             { id: 2, opponent: 'Stockfish Level 8', result: '0 - 1 (Loss)', date: '2026-05-28', accuracy: '88.1%', pgn: '1. d4 Nf6 2. c4 e6 3. Nc3 Bb4' }
         ];
 
-        let activeGame = new Chess();
+        let activeGame = typeof Chess !== 'undefined' ? new Chess() : null;
         let reviewHistory = [];
         let currentReviewIndex = 0;
 
-        window.onload = function() {
-            renderBoard('landing-board', new Chess());
-        };
+        window.addEventListener('DOMContentLoaded', () => {
+            renderRawBoard('landing-board', INITIAL_BOARD);
+        });
+
+        function renderRawBoard(elementId, gridData) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+            container.innerHTML = '';
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const square = document.createElement('div');
+                    const isDark = (r + c) % 2 === 1;
+                    square.className = `square ${isDark ? 'bg-kastledBoardDark' : 'bg-kastledBoardLight'}`;
+
+                    const pieceCode = gridData[r][c];
+                    if (pieceCode) {
+                        const img = document.createElement('img');
+                        img.className = 'piece-img';
+                        img.src = PIECE_IMAGES[pieceCode] || '';
+                        square.appendChild(img);
+                    }
+                    container.appendChild(square);
+                }
+            }
+        }
 
         function switchView(viewName) {
             document.getElementById('view-landing').classList.add('hidden');
@@ -243,7 +294,7 @@
 
             if(viewName === 'landing') {
                 document.getElementById('view-landing').classList.remove('hidden');
-                renderBoard('landing-board', new Chess());
+                renderRawBoard('landing-board', INITIAL_BOARD);
             } else if(viewName === 'dashboard') {
                 document.getElementById('view-dashboard').classList.remove('hidden');
                 renderGamesList();
@@ -333,39 +384,44 @@
         }
 
         function openGameReview(game) {
-            activeGame = new Chess();
-            activeGame.load_pgn(game.pgn);
-            reviewHistory = activeGame.history({ verbose: true });
-            activeGame.reset();
+            if (typeof Chess !== 'undefined') {
+                activeGame = new Chess();
+                activeGame.load_pgn(game.pgn);
+                reviewHistory = activeGame.history({ verbose: true });
+                activeGame.reset();
+            }
             currentReviewIndex = 0;
             switchView('review');
         }
 
-        function renderBoard(elementId, gameInstance) {
-            const boardEl = document.getElementById(elementId);
-            boardEl.innerHTML = '';
-            const boardState = gameInstance.board();
-
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    const square = document.createElement('div');
-                    const isDark = (r + c) % 2 === 1;
-                    square.className = `w-full h-full flex items-center justify-center ${isDark ? 'bg-kastledBoardDark' : 'bg-kastledBoardLight'}`;
-                    
-                    const piece = boardState[r][c];
-                    if (piece) {
-                        const pieceKey = (piece.color === 'w' ? 'w' : 'b') + piece.type.toUpperCase();
-                        const img = document.createElement('img');
-                        img.src = PIECE_IMAGES[pieceKey] || '';
-                        img.className = 'w-4/5 h-4/5 object-contain drop-shadow';
-                        square.appendChild(img);
+        function updateReviewUI() {
+            if (activeGame) {
+                const boardState = activeGame.board();
+                const gridData = [];
+                for (let r = 0; r < 8; r++) {
+                    const row = [];
+                    for (let c = 0; c < 8; c++) {
+                        const p = boardState[r][c];
+                        row.push(p ? (p.color === 'w' ? 'w' : 'b') + p.type.toUpperCase() : '');
                     }
-                    boardEl.appendChild(square);
+                    gridData.push(row);
                 }
+                renderRawBoard('review-board', gridData);
+            } else {
+                renderRawBoard('review-board', INITIAL_BOARD);
+            }
+            
+            if (currentReviewIndex > 0 && reviewHistory[currentReviewIndex - 1]) {
+                document.getElementById('classification-text').innerText = currentReviewIndex % 2 === 0 ? "Great Move ⭐" : "Best Move ‼";
+                document.getElementById('best-move-text').innerText = reviewHistory[currentReviewIndex - 1].san || "-";
+            } else {
+                document.getElementById('classification-text').innerText = "Starting Position";
+                document.getElementById('best-move-text').innerText = "-";
             }
         }
 
         function navigateMove(step) {
+            if (!activeGame) return;
             if (step === 1 && currentReviewIndex < reviewHistory.length) {
                 activeGame.move(reviewHistory[currentReviewIndex]);
                 currentReviewIndex++;
@@ -374,18 +430,6 @@
                 activeGame.undo();
             }
             updateReviewUI();
-        }
-
-        function updateReviewUI() {
-            renderBoard('review-board', activeGame);
-            
-            if (currentReviewIndex > 0) {
-                document.getElementById('classification-text').innerText = currentReviewIndex % 2 === 0 ? "Great Move ⭐" : "Best Move ‼";
-                document.getElementById('best-move-text').innerText = reviewHistory[currentReviewIndex - 1]?.san || "-";
-            } else {
-                document.getElementById('classification-text').innerText = "Starting Position";
-                document.getElementById('best-move-text').innerText = "-";
-            }
         }
     </script>
 </body>
