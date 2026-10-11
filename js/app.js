@@ -95,67 +95,235 @@ window.closeImportModal = function() {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
 
+// --- RESTORED CHESS.COM IMPORT WORKFLOW ---
 window.openChessComModal = async function() {
     if (!currentUser) return alert('You must be logged in.');
+
     const modal = document.getElementById('chesscom-modal');
-    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
 
     const contentEl = document.getElementById('chesscom-content');
     if (!contentEl) return;
     contentEl.innerHTML = `<p class="text-sm text-gray-300">Checking your profile for Chess.com alias...</p>`;
 
-    const { data: profile } = await supabaseClient
-        .from('profiles').select('chesscom_alias').eq('id', currentUser.id).maybeSingle();
+    const { data: profile, error } = await supabaseClient
+        .from('profiles')
+        .select('chesscom_alias')
+        .eq('id', currentUser.id)
+        .maybeSingle();
 
-    if (!profile || !profile.chesscom_alias) {
-        contentEl.innerHTML = `<p class="text-sm text-amber-400 font-semibold">No Chess.com alias found in your profile!</p>`;
+    if (error || !profile || !profile.chesscom_alias) {
+        contentEl.innerHTML = `
+            <div class="space-y-4">
+                <p class="text-sm text-amber-400 font-semibold">No Chess.com alias found in your profile!</p>
+                <p class="text-xs text-gray-300">Please add your Chess.com username in your Profile settings before importing games.</p>
+                <button onclick="window.closeChessComModal(); window.switchView('profile');" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Go to Profile Settings</button>
+            </div>
+        `;
         return;
     }
 
     const username = profile.chesscom_alias.trim();
+    contentEl.innerHTML = `<p class="text-sm text-gray-300">Fetching recent archives for <b>${username}</b> from Chess.com...</p>`;
+
     try {
         const archivesRes = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
         const archivesData = await archivesRes.json();
+
+        if (!archivesData.archives || archivesData.archives.length === 0) {
+            contentEl.innerHTML = `<p class="text-sm text-gray-400">No game archives found for Chess.com user: ${username}</p>`;
+            return;
+        }
+
         const latestArchiveUrl = archivesData.archives[archivesData.archives.length - 1];
         const monthRes = await fetch(latestArchiveUrl);
         const monthData = await monthRes.json();
 
-        fetchedChessComGames = monthData.games.slice(-20).reverse();
-        let listHtml = `<div class="max-h-64 overflow-y-auto space-y-2">`;
+        if (!monthData.games || monthData.games.length === 0) {
+            contentEl.innerHTML = `<p class="text-sm text-gray-400">No games found in the latest archive month.</p>`;
+            return;
+        }
+
+        const { data: existingGames } = await supabaseClient
+            .from('games')
+            .select('pgn')
+            .eq('user_id', currentUser.id);
+
+        const existingPgnSet = new Set(existingGames ? existingGames.map(g => g.pgn.trim()) : []);
+
+        // Sort from newest to oldest by end_time
+        fetchedChessComGames = monthData.games.sort((a, b) => b.end_time - a.end_time).slice(0, 20);
+
+        let listHtml = `
+            <p class="text-xs text-gray-400">Select games to import from <b>${username}'s</b> recent matches:</p>
+            <div class="max-h-64 overflow-y-auto space-y-2 divide-y divide-gray-800 pr-2">
+        `;
+
         fetchedChessComGames.forEach((g, idx) => {
-            listHtml += `<label class="flex items-center space-x-3 cursor-pointer"><input type="checkbox" id="cc-game-${idx}" class="w-4 h-4"><span>${g.white.username} vs ${g.black.username}</span></label>`;
+            const white = g.white.username;
+            const black = g.black.username;
+            const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
+            const isDuplicate = g.pgn && existingPgnSet.has(g.pgn.trim());
+
+            listHtml += `
+                <div class="pt-2 flex items-center justify-between text-sm">
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" id="cc-game-${idx}" ${isDuplicate ? 'disabled' : ''} class="w-4 h-4 accent-kastledGold rounded">
+                        <span class="${isDuplicate ? 'text-gray-500 line-through' : 'text-white font-medium'}">
+                            ${white} vs. ${black} 
+                            <span class="text-xs text-gray-500 block">${date} (${g.time_class}) ${isDuplicate ? '- [Already Imported]' : ''}</span>
+                        </span>
+                    </label>
+                </div>
+            `;
         });
-        listHtml += `</div><button onclick="window.importSelectedChessComGames()" class="w-full mt-4 py-2 bg-kastledGold text-kastledNavy font-bold rounded">Import Selected</button>`;
+
+        listHtml += `
+            </div>
+            <button onclick="window.importSelectedChessComGames()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition mt-4" style="background-color:#E5A93C; color:#0B132B;">Import Selected Games</button>
+        `;
         contentEl.innerHTML = listHtml;
+
     } catch (err) {
-        contentEl.innerHTML = `<p class="text-sm text-red-400">Failed to connect to Chess.com API.</p>`;
+        console.error('Chess.com API error:', err);
+        contentEl.innerHTML = `<p class="text-sm text-red-400">Failed to connect to Chess.com API. Please verify your username.</p>`;
     }
 };
 
 window.closeChessComModal = function() {
     const modal = document.getElementById('chesscom-modal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
 };
 
 window.importSelectedChessComGames = async function() {
-    // Handled in modular workflow
+    if (!currentUser) return;
+
+    const checkboxes = document.querySelectorAll('[id^="cc-game-"]');
+    const selectedGames = [];
+
+    checkboxes.forEach((cb, idx) => {
+        if (cb.checked && !cb.disabled) {
+            selectedGames.push(fetchedChessComGames[idx]);
+        }
+    });
+
+    if (selectedGames.length === 0) {
+        return alert('Please select at least one new game to import.');
+    }
+
+    let insertCount = 0;
+    for (const g of selectedGames) {
+        const white = g.white.username;
+        const black = g.black.username;
+        const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
+        
+        let res = 'Draw';
+        if (g.white.result === 'win') res = '1-0';
+        else if (g.black.result === 'win') res = '0-1';
+
+        const gamePgn = g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`;
+
+        const newGame = {
+            user_id: currentUser.id,
+            opponent: `${white} vs. ${black}`,
+            result: res,
+            date: date,
+            accuracy: 'Pending',
+            black_accuracy: 'Pending',
+            white_elo: 'Pending',
+            black_elo: 'Pending',
+            pgn: gamePgn,
+            is_reviewed: false
+        };
+
+        const { error } = await supabaseClient.from('games').insert([newGame]);
+        if (!error) insertCount++;
+    }
+
     window.closeChessComModal();
+    alert(`Successfully imported ${insertCount} new game(s) from Chess.com as Pending!`);
+    fetchGamesFromDatabase(currentUser, (data) => {
+        savedGames = data;
+        renderGamesList();
+    });
 };
 
 window.saveImportedGame = async function() {
     const pgn = document.getElementById('import-pgn-input').value.trim();
+    const manualOpponent = document.getElementById('import-opponent-input').value.trim();
+
     if (!pgn) return alert('Please enter valid PGN');
-    if (!currentUser) return alert('You must be logged in.');
+    if (!currentUser) return alert('You must be logged in to save games.');
+
+    const { data: existing } = await supabaseClient
+        .from('games')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('pgn', pgn)
+        .maybeSingle();
+
+    if (existing) {
+        return alert('This exact game PGN is already saved in your database!');
+    }
+
+    const whitePlayer = parsePgnHeader(pgn, 'White');
+    const blackPlayer = parsePgnHeader(pgn, 'Black');
+    const eventName = parsePgnHeader(pgn, 'Event');
+    const pgnDate = parsePgnHeader(pgn, 'Date');
+    const pgnResult = parsePgnHeader(pgn, 'Result');
+
+    let opponentName = manualOpponent;
+    if (!opponentName) {
+        if (whitePlayer && blackPlayer) {
+            opponentName = `${whitePlayer} vs. ${blackPlayer}`;
+        } else if (eventName && eventName !== '?') {
+            opponentName = eventName;
+        } else {
+            opponentName = "Analyzed Match";
+        }
+    }
+
+    let gameDate = new Date().toISOString().split('T')[0];
+    if (pgnDate && pgnDate !== '????.??.??' && pgnDate.includes('.')) {
+        gameDate = pgnDate.replace(/\./g, '-');
+    }
+
+    const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
 
     const newGame = {
-        user_id: currentUser.id, opponent: parsePgnHeader(pgn, 'White') + " vs " + parsePgnHeader(pgn, 'Black'),
-        result: '*', date: new Date().toISOString().split('T')[0], accuracy: 'Pending', black_accuracy: 'Pending',
-        white_elo: 'Pending', black_elo: 'Pending', pgn, is_reviewed: false
+        user_id: currentUser.id,
+        opponent: opponentName,
+        result: resultText,
+        date: gameDate,
+        accuracy: 'Pending',
+        black_accuracy: 'Pending',
+        white_elo: 'Pending',
+        black_elo: 'Pending',
+        pgn: pgn,
+        is_reviewed: false
     };
 
-    await supabaseClient.from('games').insert([newGame]);
+    if (supabaseClient) {
+        const { error } = await supabaseClient.from('games').insert([newGame]);
+        if (error) {
+            console.error('Database save error:', error);
+            alert('Error saving game to database.');
+        }
+    }
+
+    document.getElementById('import-pgn-input').value = '';
+    document.getElementById('import-opponent-input').value = '';
     window.closeImportModal();
-    window.switchView('dashboard');
+    fetchGamesFromDatabase(currentUser, (data) => {
+        savedGames = data;
+        renderGamesList();
+    });
 };
 
 function renderGamesList() {
@@ -164,7 +332,7 @@ function renderGamesList() {
     container.innerHTML = '';
 
     if (savedGames.length === 0) {
-        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found.</div>`;
+        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import PGN" or "+ Import Chess.com" to add some!</div>`;
         return;
     }
 
@@ -172,7 +340,18 @@ function renderGamesList() {
         const row = document.createElement('div');
         row.className = "p-4 grid grid-cols-12 items-center text-sm hover:bg-gray-800/40 transition cursor-pointer";
         row.onclick = () => openGameReview(game);
-        row.innerHTML = `<div class="col-span-5 font-semibold text-white">${game.opponent}</div><div class="col-span-3 text-gray-400">${game.result}</div><div class="col-span-2 text-kastledGold font-bold">${game.accuracy}</div><div class="col-span-2 text-right">Review</div>`;
+        
+        let accDisplay = game.accuracy || 'Pending';
+        if (accDisplay !== 'Pending') {
+            accDisplay = `${game.accuracy} / ${game.black_accuracy || 'Pending'}`;
+        }
+
+        row.innerHTML = `
+            <div class="col-span-5 font-semibold text-white">${game.opponent}</div>
+            <div class="col-span-3 text-gray-400">${game.result} <span class="text-xs block text-gray-500">${game.date}</span></div>
+            <div class="col-span-2 text-kastledGold font-bold text-xs" style="color:#E5A93C;">${accDisplay}</div>
+            <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span></div>
+        `;
         container.appendChild(row);
     });
 }
@@ -181,20 +360,39 @@ async function openGameReview(game) {
     currentActiveGameRecord = game;
     setCurrentActiveGameRecord(game);
 
-    activeGame = new Chess();
-    activeGame.load_pgn(game.pgn);
-    reviewHistory = activeGame.history({ verbose: true });
-    activeGame.reset();
+    if (typeof Chess !== 'undefined') {
+        activeGame = new Chess();
+        activeGame.load_pgn(game.pgn);
+        reviewHistory = activeGame.history({ verbose: true });
+        activeGame.reset();
+    }
     currentReviewIndex = 0;
+
+    let whiteName = "White Player";
+    let blackName = "Black Player";
+    if (game && game.pgn) {
+        whiteName = parsePgnHeader(game.pgn, 'White') || whiteName;
+        blackName = parsePgnHeader(game.pgn, 'Black') || blackName;
+    }
+
+    const wLabelEl = document.getElementById('white-player-label');
+    const bLabelEl = document.getElementById('black-player-label');
+    if (wLabelEl) wLabelEl.innerText = `White (${whiteName})`;
+    if (bLabelEl) bLabelEl.innerText = `Black (${blackName})`;
 
     if (!game.is_reviewed || game.accuracy === 'Pending') {
         await runFullGameAnalysis(activeGame, reviewHistory);
     }
 
-    document.getElementById('white-accuracy-val').innerText = currentActiveGameRecord.accuracy || 'N/A';
-    document.getElementById('black-accuracy-val').innerText = currentActiveGameRecord.black_accuracy || 'N/A';
-    document.getElementById('white-elo-val').innerText = currentActiveGameRecord.white_elo || 'N/A';
-    document.getElementById('black-elo-val').innerText = currentActiveGameRecord.black_elo || 'N/A';
+    const wAccEl = document.getElementById('white-accuracy-val');
+    const bAccEl = document.getElementById('black-accuracy-val');
+    const wEloEl = document.getElementById('white-elo-val');
+    const bEloEl = document.getElementById('black-elo-val');
+
+    if (wAccEl) wAccEl.innerText = currentActiveGameRecord.accuracy || 'N/A';
+    if (bAccEl) bAccEl.innerText = currentActiveGameRecord.black_accuracy || 'N/A';
+    if (wEloEl) wEloEl.innerText = currentActiveGameRecord.white_elo || 'N/A';
+    if (bEloEl) bEloEl.innerText = currentActiveGameRecord.black_elo || 'N/A';
 
     window.switchView('review');
 }
@@ -202,9 +400,30 @@ async function openGameReview(game) {
 function updateReviewUI() {
     if (activeGame) {
         const boardState = activeGame.board();
-        const gridData = boardState.map(row => row.map(p => p ? (p.color === 'w' ? 'w' : 'b') + p.type.toUpperCase() : ''));
+        const gridData = [];
+        for (let r = 0; r < 8; r++) {
+            const row = [];
+            for (let c = 0; c < 8; c++) {
+                const p = boardState[r][c];
+                row.push(p ? (p.color === 'w' ? 'w' : 'b') + p.type.toUpperCase() : '');
+            }
+            gridData.push(row);
+        }
         renderRawBoard('review-board', gridData);
     }
+
+    let whiteName = "White Player";
+    let blackName = "Black Player";
+    if (currentActiveGameRecord && currentActiveGameRecord.pgn) {
+        whiteName = parsePgnHeader(currentActiveGameRecord.pgn, 'White') || whiteName;
+        blackName = parsePgnHeader(currentActiveGameRecord.pgn, 'Black') || blackName;
+    }
+    
+    const whiteEl = document.getElementById('review-player');
+    const blackEl = document.getElementById('review-opponent');
+    if (whiteEl) whiteEl.innerText = `White: ${whiteName}`;
+    if (blackEl) blackEl.innerText = `Black: ${blackName}`;
+
     renderMovesList();
     analyzeCurrentPosition(activeGame, currentReviewIndex);
 }
@@ -215,24 +434,54 @@ function renderMovesList() {
     container.innerHTML = '';
     const moveAnalysisData = getMoveAnalysisData();
 
+    let activeMoveElement = null;
+
     reviewHistory.forEach((move, idx) => {
+        const moveNum = Math.floor(idx / 2) + 1;
+        const isWhite = idx % 2 === 0;
+        
+        if (isWhite) {
+            const labelSpan = document.createElement('div');
+            labelSpan.className = "text-gray-500 font-mono text-xs col-span-2 pt-1";
+            labelSpan.innerText = `${moveNum}.`;
+            container.appendChild(labelSpan);
+        }
+
         const moveBtn = document.createElement('div');
         const isCurrent = currentReviewIndex === idx + 1;
         const analysis = moveAnalysisData[idx + 1];
-        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono flex justify-between ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 text-gray-300'}`;
-        moveBtn.innerHTML = `<span>${move.san}</span><span>${analysis ? analysis.badge : ''}</span>`;
-        moveBtn.onclick = () => {
-            activeGame.reset();
-            for (let i = 0; i <= idx; i++) activeGame.move(reviewHistory[i]);
-            currentReviewIndex = idx + 1;
-            updateReviewUI();
-        };
+        const badge = analysis ? analysis.badge : '';
+        
+        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition flex justify-between items-center ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
+        if (isCurrent) moveBtn.style = 'background-color:#E5A93C; color:#0B132B;';
+        
+        moveBtn.innerHTML = `<span>${move.san}</span><span class="text-xs ml-1">${badge}</span>`;
+        moveBtn.onclick = () => jumpToMove(idx + 1);
         container.appendChild(moveBtn);
+
+        if (isCurrent) {
+            activeMoveElement = moveBtn;
+        }
     });
+
+    if (activeMoveElement) {
+        activeMoveElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+function jumpToMove(targetIndex) {
+    if (!activeGame) return;
+    activeGame.reset();
+    for (let i = 0; i < targetIndex; i++) {
+        activeGame.move(reviewHistory[i]);
+    }
+    currentReviewIndex = targetIndex;
+    updateReviewUI();
 }
 
 window.navigateMove = function(step) {
     if (!activeGame) return;
+
     if (step === 1 && currentReviewIndex < reviewHistory.length) {
         activeGame.move(reviewHistory[currentReviewIndex]);
         currentReviewIndex++;
@@ -240,11 +489,15 @@ window.navigateMove = function(step) {
         currentReviewIndex--;
         activeGame.undo();
     }
+
     updateReviewUI();
 };
 
 window.addEventListener('DOMContentLoaded', async () => {
-    activeGame = new Chess();
+    if (typeof Chess !== 'undefined') {
+        activeGame = new Chess();
+    }
+    
     initStockfish(() => activeGame, () => currentReviewIndex, updateEvalUI);
 
     currentUser = await checkAuthSession();
@@ -254,6 +507,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             updateAuthHeader(currentUser);
         });
     }
+    
     updateAuthHeader(currentUser);
     window.switchView('landing');
 });
