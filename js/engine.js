@@ -11,6 +11,23 @@ let getActiveGame = null;
 let getCurrentReviewIndex = null;
 let updateEvalUICallback = null;
 
+// 10-Category Definitions Lookup Helper
+export function getClassificationMeta(catCode) {
+    switch(catCode) {
+        case 1:  return { name: 'Brilliant', badge: '‼', class: 'bg-teal-500 text-white' };
+        case 2:  return { name: 'Great', badge: '!', class: 'bg-blue-500 text-white' };
+        case 3:  return { name: 'Best', badge: '⭐', class: 'bg-lime-500 text-white' };
+        case 4:  return { name: 'Excellent', badge: '👍', class: 'bg-emerald-600 text-white' };
+        case 5:  return { name: 'Good', badge: '✔', class: 'bg-slate-500 text-white' };
+        case 6:  return { name: 'Book', badge: '📖', class: 'bg-amber-700 text-white' };
+        case 7:  return { name: 'Inaccuracy', badge: '?!', class: 'bg-yellow-500 text-white' };
+        case 8:  return { name: 'Mistake', badge: '?', class: 'bg-orange-500 text-white' };
+        case 9:  return { name: 'Miss', badge: '✕', class: 'bg-rose-500 text-white' };
+        case 10: return { name: 'Blunder', badge: '??', class: 'bg-red-600 text-white' };
+        default: return { name: 'Best', badge: '⭐', class: 'bg-lime-500 text-white' };
+    }
+}
+
 export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback) {
     getActiveGame = activeGameRef;
     getCurrentReviewIndex = currentReviewIndexRef;
@@ -38,7 +55,7 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
                             ? batchAnalysisIndex
                             : (getCurrentReviewIndex ? getCurrentReviewIndex() : 0);
 
-                        storeMoveAnalysis(targetIdx, whiteCp / 100);
+                        storeMoveEvalOnly(targetIdx, whiteCp / 100);
                         if (!isBatchAnalyzing && updateEvalUICallback) {
                             updateEvalUICallback(whiteCp / 100);
                         }
@@ -51,7 +68,7 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
                         let targetIdx = isBatchAnalyzing
                             ? batchAnalysisIndex
                             : (getCurrentReviewIndex ? getCurrentReviewIndex() : 0);
-                        storeMoveAnalysis(targetIdx, mateCp / 100);
+                        storeMoveEvalOnly(targetIdx, mateCp / 100);
                     }
                 }
 
@@ -86,7 +103,7 @@ function evalToWinProb(cpPawns) {
 export function getMoveAnalysisData() { return moveAnalysisData; }
 export function setMoveAnalysisData(data) { moveAnalysisData = data; }
 
-function storeMoveAnalysis(index, whiteEval) {
+function storeMoveEvalOnly(index, whiteEval) {
     const winProb = evalToWinProb(whiteEval);
     moveAnalysisData[index] = { eval: whiteEval, winProb };
 }
@@ -149,14 +166,14 @@ function analyzeNextBatchMove() {
         batchTimeoutTimer = setTimeout(() => {
             if (isBatchAnalyzing) {
                 const prevEval = moveAnalysisData[batchAnalysisIndex - 1] ? moveAnalysisData[batchAnalysisIndex - 1].eval : 0.0;
-                storeMoveAnalysis(batchAnalysisIndex, prevEval);
+                storeMoveEvalOnly(batchAnalysisIndex, prevEval);
                 advanceBatchAnalysis();
             }
-        }, 400);
+        }, 350);
     } else {
         setTimeout(() => {
             const prevEval = moveAnalysisData[batchAnalysisIndex - 1] ? moveAnalysisData[batchAnalysisIndex - 1].eval : 0.0;
-            storeMoveAnalysis(batchAnalysisIndex, prevEval);
+            storeMoveEvalOnly(batchAnalysisIndex, prevEval);
             advanceBatchAnalysis();
         }, 50);
     }
@@ -184,13 +201,23 @@ function onAnalysisComplete() {
 
     const progressText = document.getElementById('analysis-progress-text');
     const progressBar = document.getElementById('analysis-progress-bar');
-    if (progressText) progressText.innerText = 'Analysis Complete! Loading Review...';
+    if (progressText) progressText.innerText = 'Analysis Complete! Processing Categories...';
     if (progressBar) progressBar.style.width = '100%';
 
+    let structuredAnalysis = [];
     let whiteScores = [];
     let blackScores = [];
 
-    // Post-process all moves cleanly after Stockfish pass completes
+    structuredAnalysis[0] = {
+        ply: 0,
+        move: 'Start',
+        eval: 0.0,
+        cat: 3,
+        code: 'Best',
+        bestMove: ''
+    };
+
+    // Classify each move into categories 1 through 10
     for (let i = 1; i < moveAnalysisData.length; i++) {
         const curr = moveAnalysisData[i];
         const prev = moveAnalysisData[i - 1];
@@ -199,33 +226,40 @@ function onAnalysisComplete() {
         const isWhite = (i % 2 === 1);
         const winLossPct = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
 
+        let catCode = 3; // Default Best
         let scoreValue = 100;
-        let category = 'Best';
-        let badge = '⭐';
-        let label = 'Best Move ⭐';
 
-        if (winLossPct > 0.15) {
-            scoreValue = 0; category = 'Blunder'; badge = '❌'; label = 'Blunder ❌';
-        } else if (winLossPct > 0.08) {
-            scoreValue = 25; category = 'Mistake'; badge = '❓'; label = 'Mistake ❓';
-        } else if (winLossPct > 0.04) {
-            scoreValue = 50; category = 'Inaccuracy'; badge = '🟡'; label = 'Inaccuracy 🟡';
-        } else if (winLossPct > 0.01) {
-            scoreValue = 75; category = 'Good'; badge = '👍'; label = 'Good Move 👍';
-        } else if (winLossPct > 0.002) {
-            scoreValue = 92; category = 'Excellent'; badge = '👍'; label = 'Excellent 👍';
-        } else if (winLossPct < -0.02) {
-            scoreValue = 100; category = 'Great'; badge = '❗'; label = 'Great Move ❗';
+        if (winLossPct > 0.20) {
+            catCode = 10; scoreValue = 0; // Blunder
+        } else if (winLossPct > 0.12) {
+            catCode = 8; scoreValue = 25; // Mistake
+        } else if (winLossPct > 0.06) {
+            catCode = 7; scoreValue = 50; // Inaccuracy
+        } else if (winLossPct > 0.02) {
+            catCode = 4; scoreValue = 85; // Excellent
+        } else if (winLossPct > -0.01) {
+            catCode = 3; scoreValue = 100; // Best
+        } else if (winLossPct <= -0.03) {
+            catCode = 2; scoreValue = 100; // Great
         }
 
-        moveAnalysisData[i].category = category;
-        moveAnalysisData[i].badge = badge;
-        moveAnalysisData[i].label = label;
-        moveAnalysisData[i].scoreValue = scoreValue;
+        const meta = getClassificationMeta(catCode);
+        const moveStr = currentBatchHistory[i - 1] || '';
+
+        structuredAnalysis[i] = {
+            ply: i,
+            move: moveStr,
+            eval: curr.eval,
+            cat: catCode,
+            code: meta.name,
+            bestMove: ''
+        };
 
         if (isWhite) whiteScores.push(scoreValue);
         else blackScores.push(scoreValue);
     }
+
+    moveAnalysisData = structuredAnalysis;
 
     const avgWhiteAcc = whiteScores.length ? whiteScores.reduce((a, b) => a + b, 0) / whiteScores.length : 80.0;
     const avgBlackAcc = blackScores.length ? blackScores.reduce((a, b) => a + b, 0) / blackScores.length : 72.6;
@@ -267,6 +301,7 @@ function onAnalysisComplete() {
         currentActiveGameRecordRef.white_elo = wEloStr;
         currentActiveGameRecordRef.black_elo = bEloStr;
         currentActiveGameRecordRef.is_reviewed = true;
+        currentActiveGameRecordRef.analysis_data = moveAnalysisData;
 
         if (supabaseClient) {
             supabaseClient
@@ -276,7 +311,8 @@ function onAnalysisComplete() {
                     black_accuracy: bAccStr,
                     white_elo: wEloStr,
                     black_elo: bEloStr,
-                    is_reviewed: true
+                    is_reviewed: true,
+                    analysis_data: moveAnalysisData
                 })
                 .eq('id', currentActiveGameRecordRef.id)
                 .then(() => {})
