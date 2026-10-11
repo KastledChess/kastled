@@ -55,8 +55,8 @@ let reviewHistory = [];
 let currentReviewIndex = 0;
 let currentActiveGameRecord = null;
 
-// Persistent cache for upfront game evaluations
-let gameEvaluations = []; 
+// Move evaluation store
+let moveAnalysisData = []; 
 
 // --- STOCKFISH WORKER ENGINE SETUP ---
 let stockfishWorker = null;
@@ -76,23 +76,19 @@ function initStockfish() {
                     const match = line.match(/score cp (-?\d+)/);
                     if (match) {
                         let cp = parseInt(match[1]);
-                        if (activeGame && activeGame.turn && activeGame.turn() === 'b') cp = -cp;
+                        // Normalize CP to White's perspective
+                        let isWhiteTurn = (activeGame && activeGame.turn) ? activeGame.turn() === 'w' : true;
+                        let whiteCp = isWhiteTurn ? cp : -cp;
                         
-                        gameEvaluations[currentReviewIndex] = {
-                            eval: cp / 100,
-                            cp: cp
-                        };
-                        
-                        updateEvalUI(cp / 100);
-                        updateClassificationUI();
+                        storeMoveAnalysis(currentReviewIndex, whiteCp / 100);
+                        updateEvalUI(whiteCp / 100);
                     }
                 } else if (line.includes('score mate')) {
                     const match = line.match(/score mate (-?\d+)/);
                     if (match) {
                         const mateIn = parseInt(match[1]);
-                        const formatted = mateIn > 0 ? `#M${mateIn}` : `#M${Math.abs(mateIn)}`;
                         const evalEl = document.getElementById('eval-score');
-                        if (evalEl) evalEl.innerText = `Eval: ${formatted}`;
+                        if (evalEl) evalEl.innerText = `Eval: #M${mateIn}`;
                     }
                 }
 
@@ -104,8 +100,8 @@ function initStockfish() {
                         if (bestMoveEl) bestMoveEl.innerText = match[1];
                         if (statusEl) statusEl.innerText = 'Analysis Complete';
                         
-                        if (gameEvaluations[currentReviewIndex]) {
-                            gameEvaluations[currentReviewIndex].bestMove = match[1];
+                        if (moveAnalysisData[currentReviewIndex]) {
+                            moveAnalysisData[currentReviewIndex].bestMove = match[1];
                         }
                     }
                 }
@@ -117,13 +113,77 @@ function initStockfish() {
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
+// Convert Eval to Win Probability
+function evalToWinProb(evalInPawns) {
+    return 1 / (1 + Math.pow(10, -evalInPawns / 4));
+}
+
+function storeMoveAnalysis(index, whiteEval) {
+    const winProb = evalToWinProb(whiteEval);
+    let badge = '⭐';
+    let label = 'Best Move ⭐';
+
+    if (index > 0 && moveAnalysisData[index - 1]) {
+        const prevProb = moveAnalysisData[index - 1].winProb;
+        const moveColor = (index % 2 === 1) ? 'w' : 'b';
+        
+        // Probability drop for the active player
+        const probLoss = moveColor === 'w' ? (prevProb - winProb) : (winProb - prevProb);
+        const lossPct = probLoss * 100;
+
+        if (lossPct > 20) {
+            badge = '❌';
+            label = 'Blunder ❌ (Major Error)';
+        } else if (lossPct > 10) {
+            badge = '⚠️';
+            label = 'Mistake ⚠️ (Inaccuracy)';
+        } else if (lossPct > 5) {
+            badge = '🟡';
+            label = 'Inaccuracy 🟡';
+        } else if (lossPct > 2) {
+            badge = '👍';
+            label = 'Good Move 👍';
+        } else {
+            badge = '⭐';
+            label = 'Best Move ⭐ (Optimal)';
+        }
+    }
+
+    moveAnalysisData[index] = {
+        eval: whiteEval,
+        winProb: winProb,
+        badge: badge,
+        label: label
+    };
+
+    updateClassificationUI();
+    renderMovesList();
+}
+
+function updateClassificationUI() {
+    const classEl = document.getElementById('classification-text');
+    if (!classEl) return;
+
+    if (currentReviewIndex === 0) {
+        classEl.innerText = "Starting Position ⚖️";
+        return;
+    }
+
+    const current = moveAnalysisData[currentReviewIndex];
+    if (current && current.label) {
+        classEl.innerText = current.label;
+    } else {
+        classEl.innerText = "Analyzing Move...";
+    }
+}
+
 function analyzeCurrentPosition() {
     if (!activeGame) return;
     const statusEl = document.getElementById('engine-status');
     if (statusEl) statusEl.innerText = 'Analyzing...';
 
-    if (gameEvaluations[currentReviewIndex] && gameEvaluations[currentReviewIndex].bestMove) {
-        const cached = gameEvaluations[currentReviewIndex];
+    if (moveAnalysisData[currentReviewIndex] && moveAnalysisData[currentReviewIndex].bestMove) {
+        const cached = moveAnalysisData[currentReviewIndex];
         updateEvalUI(cached.eval);
         updateClassificationUI();
         const bestMoveEl = document.getElementById('best-move-text');
@@ -137,38 +197,6 @@ function analyzeCurrentPosition() {
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position fen ${fen}`);
         stockfishWorker.postMessage('go depth 12');
-    }
-}
-
-function updateClassificationUI() {
-    const classEl = document.getElementById('classification-text');
-    if (!classEl) return;
-
-    if (currentReviewIndex === 0) {
-        classEl.innerText = "Starting Position ⚖️";
-        return;
-    }
-
-    const currEval = gameEvaluations[currentReviewIndex];
-    const prevEval = gameEvaluations[currentReviewIndex - 1];
-
-    if (!currEval || !prevEval) {
-        classEl.innerText = "Evaluating Move...";
-        return;
-    }
-
-    const cpDrop = prevEval.cp - currEval.cp;
-
-    if (cpDrop > 350) {
-        classEl.innerText = "Blunder ❌ (Significant Loss)";
-    } else if (cpDrop > 150) {
-        classEl.innerText = "Mistake ⚠️ (Inaccurate Play)";
-    } else if (cpDrop > 70) {
-        classEl.innerText = "Inaccuracy 🟡";
-    } else if (cpDrop <= 20) {
-        classEl.innerText = "Best Move ⭐ (Optimal)";
-    } else {
-        classEl.innerText = "Good Move 👍 (Strong Play)";
     }
 }
 
@@ -751,15 +779,15 @@ function renderGamesList() {
 
 async function openGameReview(game) {
     currentActiveGameRecord = game;
-    gameEvaluations = [];
+    moveAnalysisData = [];
 
     if (typeof Chess !== 'undefined') {
         activeGame = new Chess();
         activeGame.load_pgn(game.pgn);
         reviewHistory = activeGame.history({ verbose: true });
         
-        // Populate initial baseline evaluation
-        gameEvaluations[0] = { eval: 0.0, cp: 0, bestMove: 'e2e4' };
+        // Initial baseline eval
+        moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, badge: '', label: 'Starting Position ⚖️' };
         
         activeGame.reset();
     }
@@ -821,11 +849,13 @@ function renderMovesList() {
 
         const moveBtn = document.createElement('div');
         const isCurrent = currentReviewIndex === idx + 1;
+        const analysis = moveAnalysisData[idx + 1];
+        const badge = analysis ? analysis.badge : '';
         
-        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
+        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition flex justify-between items-center ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
         if (isCurrent) moveBtn.style = 'background-color:#E5A93C; color:#0B132B;';
         
-        moveBtn.innerText = move.san;
+        moveBtn.innerHTML = `<span>${move.san}</span><span class="text-xs ml-1">${badge}</span>`;
         moveBtn.onclick = () => jumpToMove(idx + 1);
         container.appendChild(moveBtn);
 
@@ -834,7 +864,6 @@ function renderMovesList() {
         }
     });
 
-    // Auto-scroll move list to keep active move in view
     if (activeMoveElement) {
         activeMoveElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
