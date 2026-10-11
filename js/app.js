@@ -320,17 +320,55 @@ function closeImportModal() {
     document.getElementById('import-modal').classList.remove('flex');
 }
 
+// Helper to extract PGN Header Tags
+function parsePgnHeader(pgn, tag) {
+    const regex = new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`, 'i');
+    const match = pgn.match(regex);
+    return match ? match[1] : null;
+}
+
 async function saveImportedGame() {
-    const pgn = document.getElementById('import-pgn-input').value;
-    if(!pgn) return alert('Please enter valid PGN');
-    if(!currentUser) return alert('You must be logged in to save games.');
-    
+    const pgn = document.getElementById('import-pgn-input').value.trim();
+    const manualOpponent = document.getElementById('import-opponent-input').value.trim();
+
+    if (!pgn) return alert('Please enter valid PGN');
+    if (!currentUser) return alert('You must be logged in to save games.');
+
+    // 1. Extract metadata directly from the PGN tags
+    const whitePlayer = parsePgnHeader(pgn, 'White');
+    const blackPlayer = parsePgnHeader(pgn, 'Black');
+    const eventName = parsePgnHeader(pgn, 'Event');
+    const pgnDate = parsePgnHeader(pgn, 'Date');
+    const pgnResult = parsePgnHeader(pgn, 'Result');
+
+    // 2. Determine Opponent/Match Name
+    let opponentName = manualOpponent;
+    if (!opponentName) {
+        if (whitePlayer && blackPlayer) {
+            opponentName = `${whitePlayer} vs. ${blackPlayer}`;
+        } else if (eventName && eventName !== '?') {
+            opponentName = eventName;
+        } else {
+            opponentName = "Analyzed Match";
+        }
+    }
+
+    // 3. Format Date
+    let gameDate = new Date().toISOString().split('T')[0];
+    if (pgnDate && pgnDate !== '????.??.??' && pgnDate.includes('.')) {
+        gameDate = pgnDate.replace(/\./g, '-');
+    }
+
+    // 4. Format Result & Accuracy
+    const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
+    const accuracyValue = 'Pending'; // Shows pending until full analysis runs
+
     const newGame = {
         user_id: currentUser.id,
-        opponent: 'Custom Analysis',
-        result: 'Reviewed',
-        date: new Date().toISOString().split('T')[0],
-        accuracy: '91.5%',
+        opponent: opponentName,
+        result: resultText,
+        date: gameDate,
+        accuracy: accuracyValue,
         pgn: pgn
     };
 
@@ -342,6 +380,9 @@ async function saveImportedGame() {
         }
     }
 
+    // Reset inputs and close modal
+    document.getElementById('import-pgn-input').value = '';
+    document.getElementById('import-opponent-input').value = '';
     closeImportModal();
     fetchGamesFromDatabase();
 }
