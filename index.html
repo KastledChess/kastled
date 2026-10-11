@@ -276,9 +276,25 @@
         </div>
     </div>
 
+    <!-- ANALYSIS PROGRESS MODAL -->
+    <div id="analysis-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-6 z-50">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 text-center shadow-2xl">
+            <div class="w-16 h-16 border-4 border-kastledGold border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <div>
+                <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Analyzing Game with Stockfish</h3>
+                <p id="analysis-progress-text" class="text-sm text-gray-400 mt-2">Evaluating move 1 of 0...</p>
+            </div>
+            <!-- Progress Bar -->
+            <div class="w-full bg-gray-800 h-3 rounded-full overflow-hidden border border-gray-700">
+                <div id="analysis-progress-bar" class="bg-kastledGold h-full transition-all duration-300" style="width: 0%; background-color:#E5A93C;"></div>
+            </div>
+            <p class="text-xs text-gray-500 font-mono">Categorizing move accuracy & calculating performance ELO...</p>
+        </div>
+    </div>
+
     <!-- Bottom Left Page Version Display -->
     <div class="fixed bottom-3 left-4 text-xs font-mono text-kastledGold z-40 select-none bg-black/50 px-2 py-1 rounded border border-gray-800" style="color:#E5A93C;">
-        v1.008
+        v1.009
     </div>
 
     <!-- Script File Link -->
