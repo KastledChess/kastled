@@ -1,5 +1,5 @@
 import { supabaseClient } from './config.js';
-import { initStockfish, runFullGameAnalysis, analyzeCurrentPosition, getMoveAnalysisData, setCurrentActiveGameRecord } from './engine.js';
+import { initStockfish, runFullGameAnalysis, analyzeCurrentPosition, getMoveAnalysisData, setCurrentActiveGameRecord, getClassificationMeta } from './engine.js';
 import { checkAuthSession, loadProfileData, handleProfileUpdate, fetchGamesFromDatabase } from './supabase-service.js';
 import { renderRawBoard, updateAuthHeader, updateEvalUI, parsePgnHeader } from './ui.js';
 
@@ -75,6 +75,66 @@ window.closeAuthModal = function() {
     if (modal) {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
+    }
+};
+
+// --- FIXED AUTH SUBMIT HANDLER ---
+window.handleAuthSubmit = async function(event) {
+    event.preventDefault();
+    
+    const emailInput = document.getElementById('auth-email');
+    const passwordInput = document.getElementById('auth-password');
+    const nameInput = document.getElementById('auth-name');
+    const errorEl = document.getElementById('auth-error');
+    
+    if (errorEl) errorEl.classList.add('hidden');
+
+    const email = emailInput ? emailInput.value.trim() : '';
+    const password = passwordInput ? passwordInput.value : '';
+    const fullName = nameInput ? nameInput.value.trim() : '';
+
+    if (!email || !password) return;
+
+    if (authMode === 'login') {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+
+        if (error) {
+            if (errorEl) {
+                errorEl.innerText = error.message;
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        currentUser = data.user;
+        updateAuthHeader(currentUser);
+        window.closeAuthModal();
+        window.switchView('dashboard');
+
+    } else {
+        const { data, error } = await supabaseClient.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: { full_name: fullName }
+            }
+        });
+
+        if (error) {
+            if (errorEl) {
+                errorEl.innerText = error.message;
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        currentUser = data.user ? data.user : (data.session ? data.session.user : null);
+        updateAuthHeader(currentUser);
+        window.closeAuthModal();
+        window.switchView('dashboard');
     }
 };
 
@@ -154,7 +214,6 @@ window.openChessComModal = async function() {
 
         const existingPgnSet = new Set(existingGames ? existingGames.map(g => g.pgn.trim()) : []);
 
-        // Sort from newest to oldest by end_time
         fetchedChessComGames = monthData.games.sort((a, b) => b.end_time - a.end_time).slice(0, 20);
 
         let listHtml = `
@@ -380,7 +439,12 @@ async function openGameReview(game) {
     if (wLabelEl) wLabelEl.innerText = `White (${whiteName})`;
     if (bLabelEl) bLabelEl.innerText = `Black (${blackName})`;
 
-    if (!game.is_reviewed || game.accuracy === 'Pending') {
+    // If game has stored analysis JSONB, load it directly; otherwise run analysis
+    if (game.analysis_data && Array.isArray(game.analysis_data)) {
+        import('./engine.js').then(engine => {
+            engine.setMoveAnalysisData(game.analysis_data);
+        });
+    } else if (!game.is_reviewed || game.accuracy === 'Pending') {
         await runFullGameAnalysis(activeGame, reviewHistory);
     }
 
@@ -450,12 +514,18 @@ function renderMovesList() {
         const moveBtn = document.createElement('div');
         const isCurrent = currentReviewIndex === idx + 1;
         const analysis = moveAnalysisData[idx + 1];
-        const badge = analysis ? analysis.badge : '';
+        
+        // Map 1-10 category code to correct badge using getClassificationMeta
+        let badgeSymbol = '';
+        if (analysis && analysis.cat) {
+            const meta = getClassificationMeta(analysis.cat);
+            badgeSymbol = meta.badge;
+        }
         
         moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition flex justify-between items-center ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
         if (isCurrent) moveBtn.style = 'background-color:#E5A93C; color:#0B132B;';
         
-        moveBtn.innerHTML = `<span>${move.san}</span><span class="text-xs ml-1">${badge}</span>`;
+        moveBtn.innerHTML = `<span>${move.san}</span><span class="text-xs ml-1">${badgeSymbol}</span>`;
         moveBtn.onclick = () => jumpToMove(idx + 1);
         container.appendChild(moveBtn);
 
