@@ -16,8 +16,8 @@
                         kastledNavy: '#0B132B',
                         kastledGold: '#E5A93C',
                         kastledGoldHover: '#d49830',
-                        kastledBoardDark: '#4A5568',
-                        kastledBoardLight: '#CBD5E0'
+                        kastledBoardDark: '#6B82A8',  /* Muted steel blue from screenshot */
+                        kastledBoardLight: '#EAE3D2'  /* Creamy off-white from screenshot */
                     }
                 }
             }
@@ -29,8 +29,10 @@
             background: linear-gradient(90deg, transparent, #E5A93C, transparent);
         }
         .board-border {
-            border: 4px solid #E5A93C;
+            border: 3px solid #E5A93C;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
         }
         /* Strict square styling for uniform 8x8 grid */
         .chess-grid {
@@ -86,7 +88,7 @@
         <!-- VIEW 1: LANDING PAGE -->
         <section id="view-landing" class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center py-8">
             <div class="flex justify-center">
-                <div class="board-border rounded-lg p-2 bg-gray-900 w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
+                <div class="board-border w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
                     <div id="landing-board" class="chess-grid"></div>
                 </div>
             </div>
@@ -148,7 +150,7 @@
                         <div id="eval-bar-fill" class="w-full bg-kastledGold transition-all duration-300" style="height: 50%;"></div>
                     </div>
                     <!-- Chess Board -->
-                    <div class="board-border rounded-lg p-2 bg-gray-900 w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
+                    <div class="board-border w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
                         <div id="review-board" class="chess-grid"></div>
                     </div>
                 </div>
@@ -226,7 +228,6 @@
     </div>
 
     <script>
-        // Exact mapping matching Assets folder (Capital A, specific letter casing)
         const PIECE_IMAGES = {
             'wP': 'Assets/wP.png',
             'wN': 'Assets/wN.png',
