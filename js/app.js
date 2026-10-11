@@ -28,6 +28,14 @@ const captureSound = new Audio('./assets/capture.wav');
 const checkSound = new Audio('./assets/check.wav');
 const gameOverSound = new Audio('./assets/game-over.wav');
 
+function playSound(audioObj) {
+    if (!audioObj) return;
+    audioObj.currentTime = 0;
+    audioObj.play().catch(() => {
+        // Silently handle browser autoplay restrictions
+    });
+}
+
 const INITIAL_BOARD = [
     ['bR','bN','bB','bQ','bK','bB','bN','bR'],
     ['bP','bP','bP','bP','bP','bP','bP','bP'],
@@ -48,6 +56,7 @@ let activeGame = null;
 let reviewHistory = [];
 let currentReviewIndex = 0;
 let currentActiveGameRecord = null;
+let lastCentipawnEval = 0;
 
 // --- STOCKFISH WORKER ENGINE SETUP ---
 let stockfishWorker = null;
@@ -67,7 +76,10 @@ function initStockfish() {
                     const match = line.match(/score cp (-?\d+)/);
                     if (match) {
                         let cp = parseInt(match[1]);
+                        // Normalize cp from white's perspective
                         if (activeGame && activeGame.turn && activeGame.turn() === 'b') cp = -cp;
+                        evaluateMoveQuality(cp);
+                        lastCentipawnEval = cp;
                         updateEvalUI(cp / 100);
                     }
                 } else if (line.includes('score mate')) {
@@ -110,19 +122,36 @@ function analyzeCurrentPosition() {
     }
 }
 
+function evaluateMoveQuality(currentCp) {
+    const classEl = document.getElementById('classification-text');
+    if (!classEl) return;
+
+    if (currentReviewIndex === 0) {
+        classEl.innerText = "Starting Position ⚖️";
+        return;
+    }
+
+    const cpDrop = lastCentipawnEval - currentCp;
+
+    if (cpDrop > 500) {
+        classEl.innerText = "Blunder ❌ (Major piece or material lost)";
+    } else if (cpDrop > 200) {
+        classEl.innerText = "Mistake ⚠️ (Disadvantageous trade)";
+    } else if (cpDrop > 80) {
+        classEl.innerText = "Inaccuracy 🟡";
+    } else if (Math.abs(currentCp) < 80) {
+        classEl.innerText = "Equal Position ⚖️ (Solid Move)";
+    } else {
+        classEl.innerText = "Good Move 👍 (Strong play)";
+    }
+}
+
 function updateEvalUI(evalScore) {
     const formatted = evalScore > 0 ? `+${evalScore.toFixed(1)}` : evalScore.toFixed(1);
     const evalEl = document.getElementById('eval-score');
-    const classEl = document.getElementById('classification-text');
     const barEl = document.getElementById('eval-bar-fill');
 
     if (evalEl) evalEl.innerText = `Eval: ${formatted}`;
-
-    if (classEl) {
-        if (evalScore > 1.5) classEl.innerText = "White Advantage 📈 (Good Move)";
-        else if (evalScore < -1.5) classEl.innerText = "Black Advantage 📉";
-        else classEl.innerText = "Equal Position ⚖️ (Solid Move)";
-    }
 
     if (barEl) {
         let fillPercent = 50 + (evalScore * 6.25);
@@ -176,29 +205,50 @@ function updateAuthHeader() {
     }
 }
 
+// Optimized render board without DOM clearing (prevents flashing/flickering)
 function renderRawBoard(elementId, gridData) {
     const container = document.getElementById(elementId);
     if (!container) return;
-    container.innerHTML = '';
 
+    if (container.children.length !== 64) {
+        container.innerHTML = '';
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const square = document.createElement('div');
+                const isDark = (r + c) % 2 === 1;
+                square.className = `square ${isDark ? 'square-dark' : 'square-light'}`;
+                container.appendChild(square);
+            }
+        }
+    }
+
+    const squares = container.children;
+    let index = 0;
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            const square = document.createElement('div');
-            const isDark = (r + c) % 2 === 1;
-            square.className = `square ${isDark ? 'square-dark' : 'square-light'}`;
-
+            const square = squares[index++];
             const pieceCode = gridData[r][c];
+            let img = square.querySelector('img');
+
             if (pieceCode) {
-                const img = document.createElement('img');
-                img.className = 'piece-img';
-                img.src = PIECE_IMAGES[pieceCode] || '';
-                img.onerror = function() {
-                    this.onerror = null;
-                    this.src = `./Assets/${pieceCode}.png`;
-                };
-                square.appendChild(img);
+                const imgSrc = PIECE_IMAGES[pieceCode] || `./Assets/${pieceCode}.png`;
+                if (!img) {
+                    img = document.createElement('img');
+                    img.className = 'piece-img';
+                    square.appendChild(img);
+                }
+                if (!img.src.includes(pieceCode.toLowerCase())) {
+                    img.src = imgSrc;
+                    img.onerror = function() {
+                        this.onerror = null;
+                        this.src = `./Assets/${pieceCode}.png`;
+                    };
+                }
+            } else {
+                if (img) {
+                    square.removeChild(img);
+                }
             }
-            container.appendChild(square);
         }
     }
 }
@@ -222,8 +272,7 @@ function switchView(viewName) {
         fetchGamesFromDatabase();
     } else if (viewName === 'review' && review) {
         review.classList.remove('hidden');
-        gameStartSound.currentTime = 0;
-        gameStartSound.play().catch(() => {});
+        playSound(gameStartSound);
         updateReviewUI();
     } else if (viewName === 'profile' && profile) {
         profile.classList.remove('hidden');
@@ -687,8 +736,8 @@ async function openGameReview(game) {
         activeGame.reset();
     }
     currentReviewIndex = 0;
+    lastCentipawnEval = 0;
 
-    // Update accuracy in database if it was pending
     if (game.id && (!game.accuracy || game.accuracy === 'Pending')) {
         const calculatedAcc = (90 + Math.random() * 8).toFixed(1) + '%';
         await supabaseClient.from('games').update({ accuracy: calculatedAcc }).eq('id', game.id);
@@ -715,7 +764,6 @@ function updateReviewUI() {
         renderRawBoard('review-board', INITIAL_BOARD);
     }
 
-    // Set Player Names from PGN or record
     let whiteName = "White Player";
     let blackName = "Black Player";
     if (currentActiveGameRecord && currentActiveGameRecord.pgn) {
@@ -776,25 +824,19 @@ function navigateMove(step) {
 
         if (move) {
             if (activeGame.in_checkmate() || activeGame.in_stalemate() || activeGame.game_over()) {
-                gameOverSound.currentTime = 0;
-                gameOverSound.play().catch(() => {});
+                playSound(gameOverSound);
             } else if (activeGame.in_check()) {
-                checkSound.currentTime = 0;
-                checkSound.play().catch(() => {});
+                playSound(checkSound);
             } else if (move.captured) {
-                captureSound.currentTime = 0;
-                captureSound.play().catch(() => {});
+                playSound(captureSound);
             } else {
-                moveSound.currentTime = 0;
-                moveSound.play().catch(() => {});
+                playSound(moveSound);
             }
         }
     } else if (step === -1 && currentReviewIndex > 0) {
         currentReviewIndex--;
         activeGame.undo();
-
-        moveSound.currentTime = 0;
-        moveSound.play().catch(() => {});
+        playSound(moveSound);
     }
 
     updateReviewUI();
