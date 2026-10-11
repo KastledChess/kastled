@@ -77,7 +77,6 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
-// 1. Precise Centipawn to Win Probability Mapping (0.0 to 1.0)
 function evalToWinProb(cpPawns) {
     const cp = cpPawns * 100;
     const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
@@ -89,36 +88,7 @@ export function setMoveAnalysisData(data) { moveAnalysisData = data; }
 
 function storeMoveAnalysis(index, whiteEval) {
     const winProb = evalToWinProb(whiteEval);
-    let badge = '⭐';
-    let label = 'Best Move ⭐';
-    let category = 'Best';
-    let scoreValue = 100;
-
-    if (index > 0 && moveAnalysisData[index - 1]) {
-        const prevProb = moveAnalysisData[index - 1].winProb;
-        const moveColor = (index % 2 === 1) ? 'w' : 'b';
-
-        // Measure Win Probability drop relative to the side that moved
-        const winLossPct = moveColor === 'w'
-            ? (prevProb - winProb)
-            : (winProb - prevProb);
-
-        if (winLossPct > 0.18) {
-            badge = '❌'; label = 'Blunder ❌'; category = 'Blunder'; scoreValue = 0;
-        } else if (winLossPct > 0.08) {
-            badge = '❓'; label = 'Mistake ❓'; category = 'Mistake'; scoreValue = 30;
-        } else if (winLossPct > 0.04) {
-            badge = '🟡'; label = 'Inaccuracy 🟡'; category = 'Inaccuracy'; scoreValue = 55;
-        } else if (winLossPct > 0.01) {
-            badge = '👍'; label = 'Excellent 👍'; category = 'Excellent'; scoreValue = 88;
-        } else if (winLossPct < -0.02) {
-            badge = '❗'; label = 'Great Move ❗'; category = 'Great'; scoreValue = 100;
-        } else {
-            badge = '⭐'; label = 'Best Move ⭐'; category = 'Best'; scoreValue = 100;
-        }
-    }
-
-    moveAnalysisData[index] = { eval: whiteEval, winProb, badge, label, category, scoreValue };
+    moveAnalysisData[index] = { eval: whiteEval, winProb };
 }
 
 let currentBatchGame = null;
@@ -138,14 +108,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     currentBatchGame.reset();
     moveAnalysisData = [];
-    moveAnalysisData[0] = {
-        eval: 0.0,
-        winProb: 0.5,
-        badge: '',
-        label: 'Starting Position ⚖️',
-        category: 'Best',
-        scoreValue: 100
-    };
+    moveAnalysisData[0] = { eval: 0.0, winProb: 0.5 };
 
     return new Promise((resolve) => {
         batchResolveCallback = resolve;
@@ -189,7 +152,7 @@ function analyzeNextBatchMove() {
                 storeMoveAnalysis(batchAnalysisIndex, prevEval);
                 advanceBatchAnalysis();
             }
-        }, 300);
+        }, 400);
     } else {
         setTimeout(() => {
             const prevEval = moveAnalysisData[batchAnalysisIndex - 1] ? moveAnalysisData[batchAnalysisIndex - 1].eval : 0.0;
@@ -227,13 +190,41 @@ function onAnalysisComplete() {
     let whiteScores = [];
     let blackScores = [];
 
-    // Separate scores per side
+    // Post-process all moves cleanly after Stockfish pass completes
     for (let i = 1; i < moveAnalysisData.length; i++) {
-        const item = moveAnalysisData[i];
-        if (!item) continue;
+        const curr = moveAnalysisData[i];
+        const prev = moveAnalysisData[i - 1];
+        if (!curr || !prev) continue;
+
         const isWhite = (i % 2 === 1);
-        if (isWhite) whiteScores.push(item.scoreValue);
-        else blackScores.push(item.scoreValue);
+        const winLossPct = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
+
+        let scoreValue = 100;
+        let category = 'Best';
+        let badge = '⭐';
+        let label = 'Best Move ⭐';
+
+        if (winLossPct > 0.15) {
+            scoreValue = 0; category = 'Blunder'; badge = '❌'; label = 'Blunder ❌';
+        } else if (winLossPct > 0.08) {
+            scoreValue = 25; category = 'Mistake'; badge = '❓'; label = 'Mistake ❓';
+        } else if (winLossPct > 0.04) {
+            scoreValue = 50; category = 'Inaccuracy'; badge = '🟡'; label = 'Inaccuracy 🟡';
+        } else if (winLossPct > 0.01) {
+            scoreValue = 75; category = 'Good'; badge = '👍'; label = 'Good Move 👍';
+        } else if (winLossPct > 0.002) {
+            scoreValue = 92; category = 'Excellent'; badge = '👍'; label = 'Excellent 👍';
+        } else if (winLossPct < -0.02) {
+            scoreValue = 100; category = 'Great'; badge = '❗'; label = 'Great Move ❗';
+        }
+
+        moveAnalysisData[i].category = category;
+        moveAnalysisData[i].badge = badge;
+        moveAnalysisData[i].label = label;
+        moveAnalysisData[i].scoreValue = scoreValue;
+
+        if (isWhite) whiteScores.push(scoreValue);
+        else blackScores.push(scoreValue);
     }
 
     const avgWhiteAcc = whiteScores.length ? whiteScores.reduce((a, b) => a + b, 0) / whiteScores.length : 80.0;
@@ -242,7 +233,6 @@ function onAnalysisComplete() {
     const whiteAccVal = parseFloat(Math.max(30.0, Math.min(99.0, avgWhiteAcc)).toFixed(1));
     const blackAccVal = parseFloat(Math.max(30.0, Math.min(99.0, avgBlackAcc)).toFixed(1));
 
-    // Extract raw PGN directly from active record or DOM if available
     let pgnString = currentActiveGameRecordRef ? currentActiveGameRecordRef.pgn : null;
     let whiteBaseElo = 820;
     let blackBaseElo = 788;
@@ -254,7 +244,6 @@ function onAnalysisComplete() {
         if (bPgn && !isNaN(parseInt(bPgn, 10))) blackBaseElo = parseInt(bPgn, 10);
     }
 
-    // Benchmark-calibrated Game Rating formula
     function computeGameRating(acc, baseElo) {
         const delta = acc - 70.0;
         let rating = baseElo + 400 + (delta * 18.0);
