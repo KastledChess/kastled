@@ -8,7 +8,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chess.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.com/npm/@supabase/supabase-js@2"></script>
     <script>
+        // REPLACE THESE WITH YOUR KASTLEDDATA SUPABASE CREDENTIALS
+        const SUPABASE_URL = "https://supabase.com/dashboard/project/sgpafvuexdmnbdbvveny/settings/api-keys";
+        const SUPABASE_ANON_KEY = "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
+        
+        const supabaseClient = (SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE") 
+            ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+            : null;
+
         tailwind.config = {
             theme: {
                 extend: {
@@ -255,10 +265,7 @@
         ];
 
         let currentUser = localStorage.getItem('kastled_user') || null;
-        let savedGames = JSON.parse(localStorage.getItem('kastled_games')) || [
-            { id: 1, opponent: 'Grandmaster Bot', result: '1 - 0 (Win)', date: '2026-06-01', accuracy: '96.4%', pgn: '1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5' },
-            { id: 2, opponent: 'Stockfish Level 8', result: '0 - 1 (Loss)', date: '2026-05-28', accuracy: '88.1%', pgn: '1. d4 Nf6 2. c4 e6 3. Nc3 Bb4' }
-        ];
+        let savedGames = [];
 
         let activeGame = typeof Chess !== 'undefined' ? new Chess() : null;
         let reviewHistory = [];
@@ -322,7 +329,7 @@
                 renderRawBoard('landing-board', INITIAL_BOARD);
             } else if(viewName === 'dashboard') {
                 document.getElementById('view-dashboard').classList.remove('hidden');
-                renderGamesList();
+                fetchGamesFromDatabase();
             } else if(viewName === 'review') {
                 document.getElementById('view-review').classList.remove('hidden');
                 updateReviewUI();
@@ -375,27 +382,64 @@
             document.getElementById('import-modal').classList.remove('flex');
         }
 
-        function saveImportedGame() {
+        async function saveImportedGame() {
             const pgn = document.getElementById('import-pgn-input').value;
             if(!pgn) return alert('Please enter valid PGN');
             
             const newGame = {
-                id: Date.now(),
+                user_email: currentUser,
                 opponent: 'Custom Analysis',
                 result: 'Reviewed',
                 date: new Date().toISOString().split('T')[0],
                 accuracy: '91.5%',
                 pgn: pgn
             };
-            savedGames.unshift(newGame);
-            localStorage.setItem('kastled_games', JSON.stringify(savedGames));
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('games').insert([newGame]);
+                if (error) console.error('Database save error:', error);
+            } else {
+                let localGames = JSON.parse(localStorage.getItem(`kastled_games_${currentUser}`)) || [];
+                localGames.unshift(newGame);
+                localStorage.setItem(`kastled_games_${currentUser}`, JSON.stringify(localGames));
+            }
+
             closeImportModal();
+            fetchGamesFromDatabase();
+        }
+
+        async function fetchGamesFromDatabase() {
+            if (!currentUser) return;
+
+            if (supabaseClient) {
+                const { data, error } = await supabaseClient
+                    .from('games')
+                    .select('*')
+                    .eq('user_email', currentUser)
+                    .order('created_at', { ascending: false });
+
+                if (!error && data) {
+                    savedGames = data;
+                } else {
+                    console.error('Error fetching games:', error);
+                    savedGames = [];
+                }
+            } else {
+                savedGames = JSON.parse(localStorage.getItem(`kastled_games_${currentUser}`)) || [];
+            }
+
             renderGamesList();
         }
 
         function renderGamesList() {
             const container = document.getElementById('games-list');
             container.innerHTML = '';
+
+            if (savedGames.length === 0) {
+                container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import New Game" to add one!</div>`;
+                return;
+            }
+
             savedGames.forEach(game => {
                 const row = document.createElement('div');
                 row.className = "p-4 grid grid-cols-12 items-center text-sm hover:bg-gray-800/40 transition cursor-pointer";
