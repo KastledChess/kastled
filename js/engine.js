@@ -70,18 +70,11 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
-// 1. EXACT LICHESS WIN PROBABILITY FORMULA (0 - 100%)
-function evalToWinProb(cp) {
-    const cpVal = cp * 100;
-    const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cpVal)) - 1);
+// 1. SIGMOID WIN PROBABILITY (0.0 to 100.0%)
+function evalToWinProb(cpPawns) {
+    const cp = cpPawns * 100;
+    const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
     return Math.max(0.0, Math.min(100.0, winRate));
-}
-
-// 2. LICHESS MOVE-BY-MOVE ACCURACY FORMULA
-function calculateMoveAccuracy(winDiff) {
-    const deltaW = Math.max(0, winDiff);
-    const acc = 103.1668 * Math.exp(-0.04354 * deltaW) - 3.1669;
-    return Math.max(0.0, Math.min(100.0, acc));
 }
 
 export function getMoveAnalysisData() { return moveAnalysisData; }
@@ -91,6 +84,7 @@ function storeMoveAnalysis(index, whiteEval) {
     const winProb = evalToWinProb(whiteEval);
     let badge = '⭐';
     let label = 'Best Move ⭐';
+    let category = 'Best';
 
     if (index > 0 && moveAnalysisData[index - 1]) {
         const prevProb = moveAnalysisData[index - 1].winProb;
@@ -99,29 +93,46 @@ function storeMoveAnalysis(index, whiteEval) {
         const winLossPct = moveColor === 'w' ? (prevProb - winProb) : (winProb - prevProb);
 
         if (winLossPct > 20) {
-            badge = '❌'; label = 'Blunder ❌ (Major Error)';
-        } else if (winLossPct > 10) {
-            badge = '⚠️'; label = 'Mistake ⚠️ (Inaccuracy)';
-        } else if (winLossPct > 5) {
-            badge = '🟡'; label = 'Inaccuracy 🟡';
+            badge = '❌'; label = 'Blunder ❌'; category = 'Blunder';
+        } else if (winLossPct > 12) {
+            badge = '❓'; label = 'Mistake ❓'; category = 'Mistake';
+        } else if (winLossPct > 6) {
+            badge = '🟡'; label = 'Inaccuracy 🟡'; category = 'Inaccuracy';
         } else if (winLossPct > 2) {
-            badge = '👍'; label = 'Good Move 👍';
+            badge = '👍'; label = 'Excellent 👍'; category = 'Excellent';
+        } else if (winLossPct < -5) {
+            badge = '❗'; label = 'Great Move ❗'; category = 'Great';
         } else {
-            badge = '⭐'; label = 'Best Move ⭐ (Optimal)';
+            badge = '⭐'; label = 'Best Move ⭐'; category = 'Best';
         }
     }
 
-    moveAnalysisData[index] = { eval: whiteEval, winProb: winProb, badge, label };
+    moveAnalysisData[index] = { eval: whiteEval, winProb, badge, label, category };
 }
 
-// 3. ELO CALIBRATION BENCHMARKS
-function accuracyToElo(acc) {
-    if (isNaN(acc)) return 1000;
-    if (acc >= 92) return Math.round(2000 + (acc - 92) * 50); // 2000 - 2400
-    if (acc >= 80) return Math.round(1500 + (acc - 80) * 41.6); // 1500 - 2000
-    if (acc >= 68) return Math.round(1000 + (acc - 68) * 41.6); // 1000 - 1500
-    if (acc >= 50) return Math.round(600 + (acc - 50) * 22.2);  // 600 - 1000
-    return Math.max(200, Math.round(acc * 10));
+// 2. CAPS2 ACCURACY CALCULATION
+function calculateCapsAccuracy(moveCategories) {
+    if (moveCategories.length === 0) return 75.0;
+
+    let totalScore = 0;
+    moveCategories.forEach(cat => {
+        if (cat === 'Great' || cat === 'Best') totalScore += 100;
+        else if (cat === 'Excellent') totalScore += 92;
+        else if (cat === 'Good') totalScore += 75;
+        else if (cat === 'Inaccuracy') totalScore += 50;
+        else if (cat === 'Mistake') totalScore += 25;
+        else if (cat === 'Blunder' || cat === 'Miss') totalScore += 0;
+        else totalScore += 80;
+    });
+
+    return parseFloat((totalScore / moveCategories.length).toFixed(1));
+}
+
+// 3. ANCHORED GAME RATING CALCULATION (CHESS.COM STYLE)
+function calculateGameRating(accuracy, baseElo = 1000) {
+    const eloOffset = (accuracy - 75.0) * 20;
+    const gameRating = Math.round(baseElo + 400 + eloOffset);
+    return Math.max(400, Math.min(2800, gameRating));
 }
 
 let currentBatchGame = null;
@@ -141,7 +152,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     currentBatchGame.reset();
     moveAnalysisData = [];
-    moveAnalysisData[0] = { eval: 0.0, winProb: 50.0, badge: '', label: 'Starting Position ⚖️' };
+    moveAnalysisData[0] = { eval: 0.0, winProb: 50.0, badge: '', label: 'Starting Position ⚖️', category: 'Best' };
 
     return new Promise((resolve) => {
         batchResolveCallback = resolve;
@@ -200,6 +211,13 @@ function advanceBatchAnalysis() {
 export let currentActiveGameRecordRef = null;
 export function setCurrentActiveGameRecord(rec) { currentActiveGameRecordRef = rec; }
 
+function parsePgnHeader(pgn, tag) {
+    if (!pgn) return null;
+    const regex = new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`, 'i');
+    const match = pgn.match(regex);
+    return match ? match[1] : null;
+}
+
 function onAnalysisComplete() {
     isBatchAnalyzing = false;
     if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
@@ -209,37 +227,37 @@ function onAnalysisComplete() {
     if (progressText) progressText.innerText = 'Analysis Complete! Loading Review...';
     if (progressBar) progressBar.style.width = '100%';
 
-    let whiteMoveAccs = [];
-    let blackMoveAccs = [];
+    let whiteCategories = [];
+    let blackCategories = [];
 
-    // Calculate move-by-move accuracy per player
     for (let i = 1; i < moveAnalysisData.length; i++) {
-        const curr = moveAnalysisData[i];
-        const prev = moveAnalysisData[i - 1];
-        if (!curr || !prev) continue;
-
+        const item = moveAnalysisData[i];
+        if (!item) continue;
         const isWhite = (i % 2 === 1);
-        const winDiff = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
-        
-        const moveAcc = calculateMoveAccuracy(winDiff);
-
-        if (isWhite) whiteMoveAccs.push(moveAcc);
-        else blackMoveAccs.push(moveAcc);
+        if (isWhite) whiteCategories.push(item.category);
+        else blackCategories.push(item.category);
     }
 
-    const avgWhiteAcc = whiteMoveAccs.length > 0 ? (whiteMoveAccs.reduce((a, b) => a + b, 0) / whiteMoveAccs.length) : 75.0;
-    const avgBlackAcc = blackMoveAccs.length > 0 ? (blackMoveAccs.reduce((a, b) => a + b, 0) / blackMoveAccs.length) : 75.0;
+    const whiteAccVal = calculateCapsAccuracy(whiteCategories);
+    const blackAccVal = calculateCapsAccuracy(blackCategories);
 
-    const whiteAccVal = parseFloat(avgWhiteAcc.toFixed(1));
-    const blackAccVal = parseFloat(avgBlackAcc.toFixed(1));
+    let whiteBaseElo = 800;
+    let blackBaseElo = 800;
 
-    const whiteEloVal = accuracyToElo(whiteAccVal);
-    const blackEloVal = accuracyToElo(blackAccVal);
+    if (currentActiveGameRecordRef && currentActiveGameRecordRef.pgn) {
+        const wPgnElo = parsePgnHeader(currentActiveGameRecordRef.pgn, 'WhiteElo');
+        const bPgnElo = parsePgnHeader(currentActiveGameRecordRef.pgn, 'BlackElo');
+        if (wPgnElo && !isNaN(parseInt(wPgnElo))) whiteBaseElo = parseInt(wPgnElo);
+        if (bPgnElo && !isNaN(parseInt(bPgnElo))) blackBaseElo = parseInt(bPgnElo);
+    }
+
+    const whiteEloVal = calculateGameRating(whiteAccVal, whiteBaseElo);
+    const blackEloVal = calculateGameRating(blackAccVal, blackBaseElo);
 
     const wAccStr = `${whiteAccVal}%`;
     const bAccStr = `${blackAccVal}%`;
-    const wEloStr = `~${whiteEloVal} ELO`;
-    const bEloStr = `~${blackEloVal} ELO`;
+    const wEloStr = `~${whiteEloVal} Game Rating`;
+    const bEloStr = `~${blackEloVal} Game Rating`;
 
     if (currentActiveGameRecordRef) {
         currentActiveGameRecordRef.accuracy = wAccStr;
