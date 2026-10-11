@@ -196,7 +196,7 @@ function analyzeNextBatchMove() {
         return;
     }
 
-    const pct = Math.round((batchAnalysisIndex / totalMoves) * 100);
+    const pct = Math.round(((batchAnalysisIndex + 1) / totalMoves) * 100);
     if (progressText) progressText.innerText = `Evaluating move ${batchAnalysisIndex + 1} of ${totalMoves}... (${pct}%)`;
     if (progressBar) progressBar.style.width = `${pct}%`;
 
@@ -210,13 +210,12 @@ function analyzeNextBatchMove() {
         const fen = activeGame.fen();
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position fen ${fen}`);
-        stockfishWorker.postMessage('go depth 10'); // Fast & accurate depth
+        stockfishWorker.postMessage('go depth 8'); // Quick evaluation depth per move
     } else {
-        // Fallback simulation if engine worker unavailable
         setTimeout(() => {
             storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 2);
             advanceBatchAnalysis();
-        }, 80);
+        }, 50);
     }
 }
 
@@ -228,6 +227,8 @@ function advanceBatchAnalysis() {
 
 async function finishBatchAnalysis() {
     isBatchAnalyzing = false;
+    
+    // Hide analysis modal immediately
     const modal = document.getElementById('analysis-modal');
     if (modal) modal.classList.add('hidden');
 
@@ -268,20 +269,26 @@ async function finishBatchAnalysis() {
         currentActiveGameRecord.is_reviewed = true;
 
         if (supabaseClient) {
-            await supabaseClient
-                .from('games')
-                .update({
-                    accuracy: wAccStr,
-                    black_accuracy: bAccStr,
-                    white_elo: wEloStr,
-                    black_elo: bEloStr,
-                    is_reviewed: true
-                })
-                .eq('id', currentActiveGameRecord.id);
+            try {
+                await supabaseClient
+                    .from('games')
+                    .update({
+                        accuracy: wAccStr,
+                        black_accuracy: bAccStr,
+                        white_elo: wEloStr,
+                        black_elo: bEloStr,
+                        is_reviewed: true
+                    })
+                    .eq('id', currentActiveGameRecord.id);
+            } catch (err) {
+                console.warn("Database sync deferred:", err);
+            }
         }
     }
 
-    if (batchResolveCallback) batchResolveCallback();
+    if (batchResolveCallback) {
+        batchResolveCallback();
+    }
 }
 
 async function openGameReview(game) {
@@ -362,7 +369,7 @@ function analyzeCurrentPosition() {
         const fen = activeGame.fen();
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position fen ${fen}`);
-        stockfishWorker.postMessage('go depth 12');
+        stockfishWorker.postMessage('go depth 10');
     }
 }
 
