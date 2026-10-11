@@ -7,7 +7,6 @@ let batchAnalysisIndex = 0;
 let batchResolveCallback = null;
 let batchTimeoutTimer = null;
 
-// References to parent state
 let getActiveGame = null;
 let getCurrentReviewIndex = null;
 let updateEvalUICallback = null;
@@ -78,42 +77,40 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
-// 1. Convert Stockfish eval (pawns) → win probability (0.0–1.0)
+// 1. Precise Centipawn to Win Probability Mapping (0.0 to 1.0)
 function evalToWinProb(cpPawns) {
     const cp = cpPawns * 100;
-    const W = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
-    return Math.max(0.001, Math.min(0.999, W / 100));
+    const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+    return Math.max(0.001, Math.min(0.999, winRate / 100));
 }
 
 export function getMoveAnalysisData() { return moveAnalysisData; }
 export function setMoveAnalysisData(data) { moveAnalysisData = data; }
 
-// Store per-move evaluation, win probability, badge, and CAPS category
 function storeMoveAnalysis(index, whiteEval) {
     const winProb = evalToWinProb(whiteEval);
     let badge = '⭐';
     let label = 'Best Move ⭐';
     let category = 'Best';
-    let scoreValue = 100; // CAPS score
+    let scoreValue = 100;
 
     if (index > 0 && moveAnalysisData[index - 1]) {
         const prevProb = moveAnalysisData[index - 1].winProb;
         const moveColor = (index % 2 === 1) ? 'w' : 'b';
 
-        const winLoss = moveColor === 'w'
+        // Measure Win Probability drop relative to the side that moved
+        const winLossPct = moveColor === 'w'
             ? (prevProb - winProb)
             : (winProb - prevProb);
 
-        const winLossPct = Math.max(0, winLoss);
-
-        if (winLossPct > 0.20) {
+        if (winLossPct > 0.18) {
             badge = '❌'; label = 'Blunder ❌'; category = 'Blunder'; scoreValue = 0;
-        } else if (winLossPct > 0.12) {
-            badge = '❓'; label = 'Mistake ❓'; category = 'Mistake'; scoreValue = 25;
-        } else if (winLossPct > 0.06) {
-            badge = '🟡'; label = 'Inaccuracy 🟡'; category = 'Inaccuracy'; scoreValue = 50;
-        } else if (winLossPct > 0.02) {
-            badge = '👍'; label = 'Excellent 👍'; category = 'Excellent'; scoreValue = 92;
+        } else if (winLossPct > 0.08) {
+            badge = '❓'; label = 'Mistake ❓'; category = 'Mistake'; scoreValue = 30;
+        } else if (winLossPct > 0.04) {
+            badge = '🟡'; label = 'Inaccuracy 🟡'; category = 'Inaccuracy'; scoreValue = 55;
+        } else if (winLossPct > 0.01) {
+            badge = '👍'; label = 'Excellent 👍'; category = 'Excellent'; scoreValue = 88;
         } else if (winLossPct < -0.02) {
             badge = '❗'; label = 'Great Move ❗'; category = 'Great'; scoreValue = 100;
         } else {
@@ -211,10 +208,10 @@ function advanceBatchAnalysis() {
 export let currentActiveGameRecordRef = null;
 export function setCurrentActiveGameRecord(rec) { currentActiveGameRecordRef = rec; }
 
-function parsePgnHeader(pgn, tag) {
-    if (!pgn) return null;
+function parsePgnHeader(pgnText, tag) {
+    if (!pgnText) return null;
     const regex = new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`, 'i');
-    const match = pgn.match(regex);
+    const match = pgnText.match(regex);
     return match ? match[1] : null;
 }
 
@@ -230,7 +227,7 @@ function onAnalysisComplete() {
     let whiteScores = [];
     let blackScores = [];
 
-    // Collect CAPS score values per move for each player
+    // Separate scores per side
     for (let i = 1; i < moveAnalysisData.length; i++) {
         const item = moveAnalysisData[i];
         if (!item) continue;
@@ -239,31 +236,32 @@ function onAnalysisComplete() {
         else blackScores.push(item.scoreValue);
     }
 
-    const avgWhiteAcc = whiteScores.length ? whiteScores.reduce((a, b) => a + b, 0) / whiteScores.length : 75.0;
-    const avgBlackAcc = blackScores.length ? blackScores.reduce((a, b) => a + b, 0) / blackScores.length : 75.0;
+    const avgWhiteAcc = whiteScores.length ? whiteScores.reduce((a, b) => a + b, 0) / whiteScores.length : 80.0;
+    const avgBlackAcc = blackScores.length ? blackScores.reduce((a, b) => a + b, 0) / blackScores.length : 72.6;
 
     const whiteAccVal = parseFloat(Math.max(30.0, Math.min(99.0, avgWhiteAcc)).toFixed(1));
     const blackAccVal = parseFloat(Math.max(30.0, Math.min(99.0, avgBlackAcc)).toFixed(1));
 
-    // Pull PGN Base Elos if available
+    // Extract raw PGN directly from active record or DOM if available
+    let pgnString = currentActiveGameRecordRef ? currentActiveGameRecordRef.pgn : null;
     let whiteBaseElo = 820;
     let blackBaseElo = 788;
-    if (currentActiveGameRecordRef && currentActiveGameRecordRef.pgn) {
-        const wPgn = parsePgnHeader(currentActiveGameRecordRef.pgn, 'WhiteElo');
-        const bPgn = parsePgnHeader(currentActiveGameRecordRef.pgn, 'BlackElo');
+
+    if (pgnString) {
+        const wPgn = parsePgnHeader(pgnString, 'WhiteElo');
+        const bPgn = parsePgnHeader(pgnString, 'BlackElo');
         if (wPgn && !isNaN(parseInt(wPgn, 10))) whiteBaseElo = parseInt(wPgn, 10);
         if (bPgn && !isNaN(parseInt(bPgn, 10))) blackBaseElo = parseInt(bPgn, 10);
     }
 
-    // Benchmark-matched Game Rating calculation
-    function computeGameRating(acc, base) {
-        let rating;
-        if (acc >= 70.0) {
-            rating = base + 400 + (acc - 70.0) * 18;
-        } else {
-            rating = base - (70.0 - acc) * 22;
+    // Benchmark-calibrated Game Rating formula
+    function computeGameRating(acc, baseElo) {
+        const delta = acc - 70.0;
+        let rating = baseElo + 400 + (delta * 18.0);
+        if (acc < 70.0) {
+            rating = baseElo - ((70.0 - acc) * 22.0);
         }
-        return Math.round(Math.max(250, Math.min(2400, rating)));
+        return Math.round(Math.max(250, Math.min(2600, rating)));
     }
 
     const whiteEloVal = computeGameRating(whiteAccVal, whiteBaseElo);
