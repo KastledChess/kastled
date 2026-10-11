@@ -383,7 +383,7 @@ function closeImportModal() {
     document.getElementById('import-modal').classList.remove('flex');
 }
 
-// --- CHESS.COM IMPORT WORKFLOW ---
+// --- CHESS.COM IMPORT WORKFLOW WITH DUPLICATE PREVENTION ---
 async function openChessComModal() {
     if (!currentUser) return alert('You must be logged in.');
 
@@ -392,7 +392,6 @@ async function openChessComModal() {
     const contentEl = document.getElementById('chesscom-content');
     contentEl.innerHTML = `<p class="text-sm text-gray-300">Checking your profile for Chess.com alias...</p>`;
 
-    // Check user profile for Chess.com alias
     const { data: profile, error } = await supabaseClient
         .from('profiles')
         .select('chesscom_alias')
@@ -414,7 +413,6 @@ async function openChessComModal() {
     contentEl.innerHTML = `<p class="text-sm text-gray-300">Fetching recent archives for <b>${username}</b> from Chess.com...</p>`;
 
     try {
-        // Fetch archives list from Chess.com API
         const archivesRes = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
         const archivesData = await archivesRes.json();
 
@@ -423,7 +421,6 @@ async function openChessComModal() {
             return;
         }
 
-        // Fetch the most recent month archive
         const latestArchiveUrl = archivesData.archives[archivesData.archives.length - 1];
         const monthRes = await fetch(latestArchiveUrl);
         const monthData = await monthRes.json();
@@ -433,11 +430,18 @@ async function openChessComModal() {
             return;
         }
 
-        // Take the last 15 games for selection
-        fetchedChessComGames = monthData.games.slice(-15).reverse();
+        // Fetch user's existing games from database to check for duplicates
+        const { data: existingGames } = await supabaseClient
+            .from('games')
+            .select('pgn')
+            .eq('user_id', currentUser.id);
+
+        const existingPgnSet = new Set(existingGames ? existingGames.map(g => g.pgn.trim()) : []);
+
+        fetchedChessComGames = monthData.games.slice(-20).reverse();
 
         let listHtml = `
-            <p class="text-xs text-gray-400">Select the games you want to import from <b>${username}'s</b> recent matches:</p>
+            <p class="text-xs text-gray-400">Select games to import from <b>${username}'s</b> recent matches (duplicates are marked):</p>
             <div class="max-h-64 overflow-y-auto space-y-2 divide-y divide-gray-800 pr-2">
         `;
 
@@ -445,11 +449,16 @@ async function openChessComModal() {
             const white = g.white.username;
             const black = g.black.username;
             const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
+            const isDuplicate = g.pgn && existingPgnSet.has(g.pgn.trim());
+
             listHtml += `
                 <div class="pt-2 flex items-center justify-between text-sm">
                     <label class="flex items-center space-x-3 cursor-pointer">
-                        <input type="checkbox" id="cc-game-${idx}" class="w-4 h-4 accent-kastledGold rounded">
-                        <span class="text-white font-medium">${white} vs. ${black} <span class="text-xs text-gray-500 block">${date} (${g.time_class})</span></span>
+                        <input type="checkbox" id="cc-game-${idx}" ${isDuplicate ? 'disabled' : ''} class="w-4 h-4 accent-kastledGold rounded">
+                        <span class="${isDuplicate ? 'text-gray-500 line-through' : 'text-white font-medium'}">
+                            ${white} vs. ${black} 
+                            <span class="text-xs text-gray-500 block">${date} (${g.time_class}) ${isDuplicate ? '- [Already Imported]' : ''}</span>
+                        </span>
                     </label>
                 </div>
             `;
@@ -479,13 +488,13 @@ async function importSelectedChessComGames() {
     const selectedGames = [];
 
     checkboxes.forEach((cb, idx) => {
-        if (cb.checked) {
+        if (cb.checked && !cb.disabled) {
             selectedGames.push(fetchedChessComGames[idx]);
         }
     });
 
     if (selectedGames.length === 0) {
-        return alert('Please select at least one game to import.');
+        return alert('Please select at least one new game to import.');
     }
 
     let insertCount = 0;
@@ -494,10 +503,11 @@ async function importSelectedChessComGames() {
         const black = g.black.username;
         const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
         
-        // Determine result string
         let res = 'Draw';
         if (g.white.result === 'win') res = '1-0';
         else if (g.black.result === 'win') res = '0-1';
+
+        const gamePgn = g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`;
 
         const newGame = {
             user_id: currentUser.id,
@@ -505,7 +515,7 @@ async function importSelectedChessComGames() {
             result: res,
             date: date,
             accuracy: 'Pending',
-            pgn: g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`
+            pgn: gamePgn
         };
 
         const { error } = await supabaseClient.from('games').insert([newGame]);
@@ -513,7 +523,7 @@ async function importSelectedChessComGames() {
     }
 
     closeChessComModal();
-    alert(`Successfully imported ${insertCount} game(s) from Chess.com!`);
+    alert(`Successfully imported ${insertCount} new game(s) from Chess.com!`);
     fetchGamesFromDatabase();
 }
 
@@ -530,6 +540,18 @@ async function saveImportedGame() {
 
     if (!pgn) return alert('Please enter valid PGN');
     if (!currentUser) return alert('You must be logged in to save games.');
+
+    // Check if this exact PGN is already saved for this user
+    const { data: existing } = await supabaseClient
+        .from('games')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('pgn', pgn)
+        .single();
+
+    if (existing) {
+        return alert('This exact game PGN is already saved in your database!');
+    }
 
     const whitePlayer = parsePgnHeader(pgn, 'White');
     const blackPlayer = parsePgnHeader(pgn, 'Black');
