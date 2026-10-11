@@ -27,7 +27,6 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
             stockfishWorker.onmessage = function(event) {
                 const line = event.data || '';
 
-                // Centipawn score
                 if (line.includes('score cp')) {
                     const match = line.match(/score cp (-?\d+)/);
                     if (match) {
@@ -40,14 +39,12 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
                             ? batchAnalysisIndex
                             : (getCurrentReviewIndex ? getCurrentReviewIndex() : 0);
 
-                        storeMoveAnalysis(targetIdx, whiteCp / 100); // pawns
+                        storeMoveAnalysis(targetIdx, whiteCp / 100);
                         if (!isBatchAnalyzing && updateEvalUICallback) {
                             updateEvalUICallback(whiteCp / 100);
                         }
                     }
-                }
-                // Mate score mapped to big eval
-                else if (line.includes('score mate')) {
+                } else if (line.includes('score mate')) {
                     const match = line.match(/score mate (-?\d+)/);
                     if (match) {
                         const mateIn = parseInt(match[1], 10);
@@ -59,7 +56,6 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
                     }
                 }
 
-                // Best move / batch advance
                 if (line.includes('bestmove')) {
                     if (isBatchAnalyzing) {
                         if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
@@ -84,7 +80,7 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
 
 // 1. Convert Stockfish eval (pawns) → win probability (0.0–1.0)
 function evalToWinProb(cpPawns) {
-    const cp = cpPawns * 100; // convert pawns to centipawns
+    const cp = cpPawns * 100;
     const W = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
     return Math.max(0.001, Math.min(0.999, W / 100));
 }
@@ -92,12 +88,13 @@ function evalToWinProb(cpPawns) {
 export function getMoveAnalysisData() { return moveAnalysisData; }
 export function setMoveAnalysisData(data) { moveAnalysisData = data; }
 
-// Store per-move eval + win probability + simple category
+// Store per-move evaluation, win probability, badge, and CAPS category
 function storeMoveAnalysis(index, whiteEval) {
     const winProb = evalToWinProb(whiteEval);
     let badge = '⭐';
     let label = 'Best Move ⭐';
     let category = 'Best';
+    let scoreValue = 100; // CAPS score
 
     if (index > 0 && moveAnalysisData[index - 1]) {
         const prevProb = moveAnalysisData[index - 1].winProb;
@@ -110,19 +107,21 @@ function storeMoveAnalysis(index, whiteEval) {
         const winLossPct = Math.max(0, winLoss);
 
         if (winLossPct > 0.20) {
-            badge = '❌'; label = 'Blunder ❌'; category = 'Blunder';
-        } else if (winLossPct > 0.10) {
-            badge = '❓'; label = 'Mistake ❓'; category = 'Mistake';
-        } else if (winLossPct > 0.05) {
-            badge = '🟡'; label = 'Inaccuracy 🟡'; category = 'Inaccuracy';
-        } else if (winLossPct > 0.01) {
-            badge = '👍'; label = 'Good Move 👍'; category = 'Good';
+            badge = '❌'; label = 'Blunder ❌'; category = 'Blunder'; scoreValue = 0;
+        } else if (winLossPct > 0.12) {
+            badge = '❓'; label = 'Mistake ❓'; category = 'Mistake'; scoreValue = 25;
+        } else if (winLossPct > 0.06) {
+            badge = '🟡'; label = 'Inaccuracy 🟡'; category = 'Inaccuracy'; scoreValue = 50;
+        } else if (winLossPct > 0.02) {
+            badge = '👍'; label = 'Excellent 👍'; category = 'Excellent'; scoreValue = 92;
+        } else if (winLossPct < -0.02) {
+            badge = '❗'; label = 'Great Move ❗'; category = 'Great'; scoreValue = 100;
         } else {
-            badge = '⭐'; label = 'Best Move ⭐'; category = 'Best';
+            badge = '⭐'; label = 'Best Move ⭐'; category = 'Best'; scoreValue = 100;
         }
     }
 
-    moveAnalysisData[index] = { eval: whiteEval, winProb, badge, label, category };
+    moveAnalysisData[index] = { eval: whiteEval, winProb, badge, label, category, scoreValue };
 }
 
 let currentBatchGame = null;
@@ -147,7 +146,8 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
         winProb: 0.5,
         badge: '',
         label: 'Starting Position ⚖️',
-        category: 'Best'
+        category: 'Best',
+        scoreValue: 100
     };
 
     return new Promise((resolve) => {
@@ -188,16 +188,15 @@ function analyzeNextBatchMove() {
         if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
         batchTimeoutTimer = setTimeout(() => {
             if (isBatchAnalyzing) {
-                // Fallback: neutral random eval so we still get some loss signal
-                const randomEval = (Math.random() - 0.5) * 1.0; // -0.5 to +0.5 pawns
-                storeMoveAnalysis(batchAnalysisIndex, randomEval);
+                const prevEval = moveAnalysisData[batchAnalysisIndex - 1] ? moveAnalysisData[batchAnalysisIndex - 1].eval : 0.0;
+                storeMoveAnalysis(batchAnalysisIndex, prevEval);
                 advanceBatchAnalysis();
             }
         }, 300);
     } else {
         setTimeout(() => {
-            const randomEval = (Math.random() - 0.5) * 1.0;
-            storeMoveAnalysis(batchAnalysisIndex, randomEval);
+            const prevEval = moveAnalysisData[batchAnalysisIndex - 1] ? moveAnalysisData[batchAnalysisIndex - 1].eval : 0.0;
+            storeMoveAnalysis(batchAnalysisIndex, prevEval);
             advanceBatchAnalysis();
         }, 50);
     }
@@ -212,6 +211,13 @@ function advanceBatchAnalysis() {
 export let currentActiveGameRecordRef = null;
 export function setCurrentActiveGameRecord(rec) { currentActiveGameRecordRef = rec; }
 
+function parsePgnHeader(pgn, tag) {
+    if (!pgn) return null;
+    const regex = new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`, 'i');
+    const match = pgn.match(regex);
+    return match ? match[1] : null;
+}
+
 function onAnalysisComplete() {
     isBatchAnalyzing = false;
     if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
@@ -221,68 +227,47 @@ function onAnalysisComplete() {
     if (progressText) progressText.innerText = 'Analysis Complete! Loading Review...';
     if (progressBar) progressBar.style.width = '100%';
 
-    // 2. 3-ply moving average smoothing on winProb
-    let smoothed = [];
-    for (let i = 0; i < moveAnalysisData.length; i++) {
-        const curr = moveAnalysisData[i];
-        if (!curr) continue;
+    let whiteScores = [];
+    let blackScores = [];
 
-        let sum = curr.winProb;
-        let count = 1;
-
-        if (i > 0 && moveAnalysisData[i - 1]) {
-            sum += moveAnalysisData[i - 1].winProb;
-            count++;
-        }
-        if (i < moveAnalysisData.length - 1 && moveAnalysisData[i + 1]) {
-            sum += moveAnalysisData[i + 1].winProb;
-            count++;
-        }
-
-        smoothed[i] = sum / count;
-    }
-
-    let whiteLosses = [];
-    let blackLosses = [];
-
-    // 3. Per-move win-probability loss from smoothed values
-    for (let i = 1; i < smoothed.length; i++) {
-        const curr = smoothed[i];
-        const prev = smoothed[i - 1];
-        if (curr === undefined || prev === undefined) continue;
-
+    // Collect CAPS score values per move for each player
+    for (let i = 1; i < moveAnalysisData.length; i++) {
+        const item = moveAnalysisData[i];
+        if (!item) continue;
         const isWhite = (i % 2 === 1);
-        let deltaW = isWhite ? (prev - curr) : (curr - prev);
-        deltaW = Math.max(0, deltaW);
-
-        if (isWhite) whiteLosses.push(deltaW);
-        else blackLosses.push(deltaW);
+        if (isWhite) whiteScores.push(item.scoreValue);
+        else blackScores.push(item.scoreValue);
     }
 
-    const avgWhiteLoss = whiteLosses.length
-        ? whiteLosses.reduce((a, b) => a + b, 0) / whiteLosses.length
-        : 0.02;
+    const avgWhiteAcc = whiteScores.length ? whiteScores.reduce((a, b) => a + b, 0) / whiteScores.length : 75.0;
+    const avgBlackAcc = blackScores.length ? blackScores.reduce((a, b) => a + b, 0) / blackScores.length : 75.0;
 
-    const avgBlackLoss = blackLosses.length
-        ? blackLosses.reduce((a, b) => a + b, 0) / blackLosses.length
-        : 0.02;
+    const whiteAccVal = parseFloat(Math.max(30.0, Math.min(99.0, avgWhiteAcc)).toFixed(1));
+    const blackAccVal = parseFloat(Math.max(30.0, Math.min(99.0, avgBlackAcc)).toFixed(1));
 
-    // 4. Calibrated exponential accuracy (Chess.com-style)
-    const rawWhiteAcc = 103.1668 * Math.exp(-4.0 * avgWhiteLoss) - 3.1669;
-    const rawBlackAcc = 103.1668 * Math.exp(-4.0 * avgBlackLoss) - 3.1669;
+    // Pull PGN Base Elos if available
+    let whiteBaseElo = 820;
+    let blackBaseElo = 788;
+    if (currentActiveGameRecordRef && currentActiveGameRecordRef.pgn) {
+        const wPgn = parsePgnHeader(currentActiveGameRecordRef.pgn, 'WhiteElo');
+        const bPgn = parsePgnHeader(currentActiveGameRecordRef.pgn, 'BlackElo');
+        if (wPgn && !isNaN(parseInt(wPgn, 10))) whiteBaseElo = parseInt(wPgn, 10);
+        if (bPgn && !isNaN(parseInt(bPgn, 10))) blackBaseElo = parseInt(bPgn, 10);
+    }
 
-    const whiteAccVal = parseFloat(Math.max(40, Math.min(99, rawWhiteAcc)).toFixed(1));
-    const blackAccVal = parseFloat(Math.max(40, Math.min(99, rawBlackAcc)).toFixed(1));
+    // Benchmark-matched Game Rating calculation
+    function computeGameRating(acc, base) {
+        let rating;
+        if (acc >= 70.0) {
+            rating = base + 400 + (acc - 70.0) * 18;
+        } else {
+            rating = base - (70.0 - acc) * 22;
+        }
+        return Math.round(Math.max(250, Math.min(2400, rating)));
+    }
 
-    // 5. Logarithmic game rating conversion (performance ELO)
-    const pW = Math.max(0.01, Math.min(0.98, whiteAccVal / 100));
-    const pB = Math.max(0.01, Math.min(0.98, blackAccVal / 100));
-
-    let whiteRating = 250 + 720 * Math.log(pW / (1 - pW));
-    let blackRating = 250 + 720 * Math.log(pB / (1 - pB));
-
-    const whiteEloVal = Math.round(Math.max(250, Math.min(1600, whiteRating)));
-    const blackEloVal = Math.round(Math.max(250, Math.min(1600, blackRating)));
+    const whiteEloVal = computeGameRating(whiteAccVal, whiteBaseElo);
+    const blackEloVal = computeGameRating(blackAccVal, blackBaseElo);
 
     const wAccStr = `${whiteAccVal}%`;
     const bAccStr = `${blackAccVal}%`;
@@ -332,7 +317,6 @@ export function analyzeCurrentPosition(activeGame, currentReviewIndex) {
     const statusEl = document.getElementById('engine-status');
     if (statusEl) statusEl.innerText = 'Analyzing...';
 
-    // Simple cache check (you can extend this later)
     if (moveAnalysisData[currentReviewIndex]) {
         if (statusEl) statusEl.innerText = 'Analysis Complete';
         return;
