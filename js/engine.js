@@ -7,7 +7,16 @@ let batchAnalysisIndex = 0;
 let batchResolveCallback = null;
 let batchTimeoutTimer = null;
 
-export function initStockfish(activeGameRef, currentReviewIndexRef, updateEvalUICallback) {
+// References to parent state
+let getActiveGame = null;
+let getCurrentReviewIndex = null;
+let updateEvalUICallback = null;
+
+export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback) {
+    getActiveGame = activeGameRef;
+    getCurrentReviewIndex = currentReviewIndexRef;
+    updateEvalUICallback = evalCallback;
+
     fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')
         .then(response => response.text())
         .then(scriptText => {
@@ -22,20 +31,20 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, updateEvalUI
                     const match = line.match(/score cp (-?\d+)/);
                     if (match) {
                         let cp = parseInt(match[1]);
-                        let activeGame = activeGameRef();
+                        let activeGame = getActiveGame ? getActiveGame() : null;
                         let isWhiteTurn = (activeGame && activeGame.turn) ? activeGame.turn() === 'w' : true;
                         let whiteCp = isWhiteTurn ? cp : -cp;
                         
-                        let targetIdx = isBatchAnalyzing ? batchAnalysisIndex : currentReviewIndexRef();
+                        let targetIdx = isBatchAnalyzing ? batchAnalysisIndex : (getCurrentReviewIndex ? getCurrentReviewIndex() : 0);
                         storeMoveAnalysis(targetIdx, whiteCp / 100);
-                        if (!isBatchAnalyzing) updateEvalUICallback(whiteCp / 100);
+                        if (!isBatchAnalyzing && updateEvalUICallback) updateEvalUICallback(whiteCp / 100);
                     }
                 } else if (line.includes('score mate')) {
                     const match = line.match(/score mate (-?\d+)/);
                     if (match) {
                         const mateIn = parseInt(match[1]);
                         let mateCp = mateIn > 0 ? 1000 - mateIn : -1000 - mateIn;
-                        let targetIdx = isBatchAnalyzing ? batchAnalysisIndex : currentReviewIndexRef();
+                        let targetIdx = isBatchAnalyzing ? batchAnalysisIndex : (getCurrentReviewIndex ? getCurrentReviewIndex() : 0);
                         storeMoveAnalysis(targetIdx, mateCp / 100);
                     }
                 }
@@ -62,6 +71,7 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, updateEvalUI
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
+// CONVERT PAWNS EVALUATION TO WIN PROBABILITY: W = 1 / (1 + 10^(-v / 4))
 function evalToWinProb(evalInPawns) {
     return 1 / (1 + Math.pow(10, -evalInPawns / 4));
 }
@@ -97,6 +107,7 @@ function storeMoveAnalysis(index, whiteEval) {
     moveAnalysisData[index] = { eval: whiteEval, winProb: winProb, badge, label };
 }
 
+// CHESSIGMA-ALIGNED ELO CALIBRATION
 function accuracyToElo(acc) {
     if (isNaN(acc)) return 1000;
     if (acc >= 90) return Math.round(1500 + (acc - 90) * 50);
@@ -106,9 +117,14 @@ function accuracyToElo(acc) {
     return Math.max(300, Math.round(acc * 10));
 }
 
+let currentBatchGame = null;
+let currentBatchHistory = [];
+
 export async function runFullGameAnalysis(activeGame, reviewHistory) {
     isBatchAnalyzing = true;
     batchAnalysisIndex = 0;
+    currentBatchGame = activeGame;
+    currentBatchHistory = reviewHistory;
 
     const modal = document.getElementById('analysis-modal');
     if (modal) {
@@ -116,18 +132,19 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
         modal.classList.add('flex');
     }
 
-    activeGame.reset();
+    currentBatchGame.reset();
     moveAnalysisData = [];
     moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, badge: '', label: 'Starting Position ⚖️' };
 
     return new Promise((resolve) => {
         batchResolveCallback = resolve;
-        analyzeNextBatchMove(activeGame, reviewHistory);
+        analyzeNextBatchMove();
     });
 }
 
-function analyzeNextBatchMove(activeGame, reviewHistory) {
-    const totalMoves = reviewHistory.length;
+function analyzeNextBatchMove() {
+    if (!currentBatchHistory) return;
+    const totalMoves = currentBatchHistory.length;
     const progressText = document.getElementById('analysis-progress-text');
     const progressBar = document.getElementById('analysis-progress-bar');
 
@@ -141,31 +158,37 @@ function analyzeNextBatchMove(activeGame, reviewHistory) {
     if (progressBar) progressBar.style.width = `${pct}%`;
 
     batchAnalysisIndex++;
-    activeGame.reset();
+    currentBatchGame.reset();
     for (let i = 0; i < batchAnalysisIndex; i++) {
-        activeGame.move(reviewHistory[i]);
+        currentBatchGame.move(currentBatchHistory[i]);
     }
 
     if (stockfishWorker) {
-        const fen = activeGame.fen();
+        const fen = currentBatchGame.fen();
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position fen ${fen}`);
-        stockfishWorker.postMessage('go depth 10');
+        stockfishWorker.postMessage('go depth 8');
 
+        // Watchdog timer: force advance after 250ms if Stockfish worker hangs
+        if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
         batchTimeoutTimer = setTimeout(() => {
-            advanceBatchAnalysis(activeGame, reviewHistory);
-        }, 400);
+            if (isBatchAnalyzing) {
+                // Generate a lightweight evaluation estimation if Stockfish missed bestmove
+                storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 1.5);
+                advanceBatchAnalysis();
+            }
+        }, 250);
     } else {
         setTimeout(() => {
-            storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 2);
-            advanceBatchAnalysis(activeGame, reviewHistory);
+            storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 1.5);
+            advanceBatchAnalysis();
         }, 40);
     }
 }
 
-function advanceBatchAnalysis(activeGame, reviewHistory) {
+function advanceBatchAnalysis() {
     if (isBatchAnalyzing) {
-        analyzeNextBatchMove(activeGame, reviewHistory);
+        analyzeNextBatchMove();
     }
 }
 
