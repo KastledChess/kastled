@@ -38,11 +38,10 @@
                  onerror="this.onerror=null; this.src='./assets/logo.png';">
         </div>
         <nav class="hidden md:flex items-center space-x-8 text-gray-300">
-            <a href="#" onclick="switchView('landing')" class="hover:text-kastledGold transition">Learn</a>
+            <a href="#" onclick="switchView('landing')" class="hover:text-kastledGold transition">Home</a>
             <a href="#" onclick="checkAuthAndSwitch('dashboard')" class="hover:text-kastledGold transition">Play</a>
-            <a href="#" onclick="switchView('dashboard')" class="hover:text-kastledGold transition">Puzzles</a>
+            <a href="#" onclick="checkAuthAndSwitch('review')" class="hover:text-kastledGold transition">Review</a>
             <a href="#" onclick="checkAuthAndSwitch('profile')" class="hover:text-kastledGold transition">Profile</a>
-            <a href="#" class="hover:text-kastledGold transition">Clans</a>
         </nav>
         <div id="auth-nav-container" class="flex items-center space-x-4">
             <!-- Dynamically populated -->
@@ -83,7 +82,7 @@
                     <p class="text-gray-400 text-sm">Import PGN files or review past matches analyzed by Stockfish.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button onclick="alert('Chess.com import coming soon!')" class="px-5 py-2.5 rounded-xl border border-kastledGold text-kastledGold font-bold text-sm hover:bg-kastledGold/10 transition flex items-center gap-2">
+                    <button onclick="openChessComModal()" class="px-5 py-2.5 rounded-xl border border-kastledGold text-kastledGold font-bold text-sm hover:bg-kastledGold/10 transition flex items-center gap-2">
                         <span>+ Import Chess.com</span>
                     </button>
                     <button onclick="openImportModal()" class="px-5 py-2.5 rounded-xl bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition flex items-center gap-2" style="background-color:#E5A93C; color:#0B132B;">
@@ -217,7 +216,7 @@
         </div>
     </div>
 
-    <!-- IMPORT MODAL -->
+    <!-- PGN IMPORT MODAL -->
     <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
         <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative" style="background-color:#111827;">
             <button onclick="closeImportModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
@@ -236,7 +235,18 @@
         </div>
     </div>
 
-    <!-- Script File Link -->
-    <script src="./js/app.js"></script>
+    <!-- CHESS.COM IMPORT MODAL -->
+    <div id="chesscom-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-xl w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeChessComModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import from Chess.com</h3>
+            <div id="chesscom-content" class="space-y-4">
+                <p class="text-sm text-gray-300">Fetching your recent games...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cache-Busted Script File Link -->
+    <script src="./js/app.js?v=1.0.2"></script>
 </body>
 </html>
