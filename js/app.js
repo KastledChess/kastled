@@ -1,32 +1,33 @@
-// KASTLEDDATA SUPABASE CREDENTIALS
+// KASTLED SUPABASE CREDENTIALS
 const SUPABASE_URL = "https://sgpafvuexdmnbdbvveny.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
 
-const supabaseClient = (SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_URL !== "") 
+const supabaseClient = (typeof supabase !== 'undefined' && SUPABASE_URL !== "") 
     ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
     : null;
 
+// Dual-path asset loader to support both 'Assets' and 'assets'
 const PIECE_IMAGES = {
-    'wP': 'Assets/wP.png',
-    'wN': 'Assets/wN.png',
-    'wB': 'Assets/wB.png',
-    'wR': 'Assets/wR.png',
-    'wQ': 'Assets/wQ.png',
-    'wK': 'Assets/wK.png',
-    'bP': 'Assets/bP.png',
-    'bN': 'Assets/bN.png',
-    'bB': 'Assets/bB.png',
-    'bR': 'Assets/bR.png',
-    'bQ': 'Assets/bQ.png',
-    'bK': 'Assets/bK.png'
+    'wP': './assets/wP.png',
+    'wN': './assets/wN.png',
+    'wB': './assets/wB.png',
+    'wR': './assets/wR.png',
+    'wQ': './assets/wQ.png',
+    'wK': './assets/wK.png',
+    'bP': './assets/bP.png',
+    'bN': './assets/bN.png',
+    'bB': './assets/bB.png',
+    'bR': './assets/bR.png',
+    'bQ': './assets/bQ.png',
+    'bK': './assets/bK.png'
 };
 
 // --- AUDIO SOUND EFFECTS ---
-const gameStartSound = new Audio('Assets/game-start.wav');
-const moveSound = new Audio('Assets/move.wav');
-const captureSound = new Audio('Assets/capture.wav');
-const checkSound = new Audio('Assets/check.wav');
-const gameOverSound = new Audio('Assets/game-over.wav');
+const gameStartSound = new Audio('./assets/game-start.wav');
+const moveSound = new Audio('./assets/move.wav');
+const captureSound = new Audio('./assets/capture.wav');
+const checkSound = new Audio('./assets/check.wav');
+const gameOverSound = new Audio('./assets/game-over.wav');
 
 const INITIAL_BOARD = [
     ['bR','bN','bB','bQ','bK','bB','bN','bR'],
@@ -44,7 +45,7 @@ let authMode = 'login';
 let savedGames = [];
 let fetchedChessComGames = [];
 
-let activeGame = typeof Chess !== 'undefined' ? new Chess() : null;
+let activeGame = null;
 let reviewHistory = [];
 let currentReviewIndex = 0;
 
@@ -66,7 +67,7 @@ function initStockfish() {
                     const match = line.match(/score cp (-?\d+)/);
                     if (match) {
                         let cp = parseInt(match[1]);
-                        if (activeGame && activeGame.turn() === 'b') cp = -cp;
+                        if (activeGame && activeGame.turn && activeGame.turn() === 'b') cp = -cp;
                         updateEvalUI(cp / 100);
                     }
                 } else if (line.includes('score mate')) {
@@ -74,17 +75,18 @@ function initStockfish() {
                     if (match) {
                         const mateIn = parseInt(match[1]);
                         const formatted = mateIn > 0 ? `#M${mateIn}` : `#M${Math.abs(mateIn)}`;
-                        document.getElementById('eval-score').innerText = `Eval: ${formatted}`;
-                        document.getElementById('classification-text').innerText = mateIn > 0 ? "White Forced Mate 🏆" : "Black Forced Mate ⚠️";
-                        document.getElementById('eval-bar-fill').style.height = mateIn > 0 ? '100%' : '0%';
+                        const evalEl = document.getElementById('eval-score');
+                        if (evalEl) evalEl.innerText = `Eval: ${formatted}`;
                     }
                 }
 
                 if (line.includes('bestmove')) {
                     const match = line.match(/bestmove\s+(\w+)/);
                     if (match && match[1]) {
-                        document.getElementById('best-move-text').innerText = match[1];
-                        document.getElementById('engine-status').innerText = 'Analysis Complete';
+                        const bestMoveEl = document.getElementById('best-move-text');
+                        const statusEl = document.getElementById('engine-status');
+                        if (bestMoveEl) bestMoveEl.innerText = match[1];
+                        if (statusEl) statusEl.innerText = 'Analysis Complete';
                     }
                 }
             };
@@ -92,74 +94,64 @@ function initStockfish() {
             stockfishWorker.postMessage('uci');
             stockfishWorker.postMessage('isready');
         })
-        .catch(err => console.warn("Stockfish Blob initialization fallback active:", err));
+        .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
 function analyzeCurrentPosition() {
     if (!activeGame) return;
-
-    document.getElementById('engine-status').innerText = 'Analyzing...';
+    const statusEl = document.getElementById('engine-status');
+    if (statusEl) statusEl.innerText = 'Analyzing...';
 
     if (stockfishWorker) {
         const fen = activeGame.fen();
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position fen ${fen}`);
         stockfishWorker.postMessage('go depth 12');
-    } else {
-        calculateMaterialEval();
     }
-}
-
-function calculateMaterialEval() {
-    if (!activeGame) return;
-    const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-    let score = 0;
-    const board = activeGame.board();
-
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            const piece = board[r][c];
-            if (piece) {
-                const val = pieceValues[piece.type] || 0;
-                score += (piece.color === 'w') ? val : -val;
-            }
-        }
-    }
-
-    updateEvalUI(score);
-    document.getElementById('best-move-text').innerText = "Calculating...";
-    document.getElementById('engine-status').innerText = 'Material Eval';
 }
 
 function updateEvalUI(evalScore) {
     const formatted = evalScore > 0 ? `+${evalScore.toFixed(1)}` : evalScore.toFixed(1);
-    document.getElementById('eval-score').innerText = `Eval: ${formatted}`;
+    const evalEl = document.getElementById('eval-score');
+    const classEl = document.getElementById('classification-text');
+    const barEl = document.getElementById('eval-bar-fill');
 
-    if (evalScore > 1.5) {
-        document.getElementById('classification-text').innerText = "White Advantage 📈";
-    } else if (evalScore < -1.5) {
-        document.getElementById('classification-text').innerText = "Black Advantage 📉";
-    } else {
-        document.getElementById('classification-text').innerText = "Equal Position ⚖️";
+    if (evalEl) evalEl.innerText = `Eval: ${formatted}`;
+
+    if (classEl) {
+        if (evalScore > 1.5) classEl.innerText = "White Advantage 📈";
+        else if (evalScore < -1.5) classEl.innerText = "Black Advantage 📉";
+        else classEl.innerText = "Equal Position ⚖️";
     }
 
-    let fillPercent = 50 + (evalScore * 6.25);
-    fillPercent = Math.max(5, Math.min(95, fillPercent));
-    document.getElementById('eval-bar-fill').style.height = `${fillPercent}%`;
+    if (barEl) {
+        let fillPercent = 50 + (evalScore * 6.25);
+        fillPercent = Math.max(5, Math.min(95, fillPercent));
+        barEl.style.height = `${fillPercent}%`;
+    }
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    if (typeof Chess !== 'undefined') {
+        activeGame = new Chess();
+    }
+    
     initStockfish();
 
     if (supabaseClient) {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        currentUser = session ? session.user : null;
-        
-        supabaseClient.auth.onAuthStateChange((_event, session) => {
+        try {
+            const { data: { session } } = await supabaseClient.auth.getSession();
             currentUser = session ? session.user : null;
-            updateAuthHeader();
-        });
+            
+            supabaseClient.auth.onAuthStateChange((_event, session) => {
+                currentUser = session ? session.user : null;
+                updateAuthHeader();
+            });
+        } catch (e) {
+            console.warn("Supabase auth session check skipped:", e);
+        }
     }
+    
     updateAuthHeader();
     renderRawBoard('landing-board', INITIAL_BOARD);
 });
@@ -200,6 +192,11 @@ function renderRawBoard(elementId, gridData) {
                 const img = document.createElement('img');
                 img.className = 'piece-img';
                 img.src = PIECE_IMAGES[pieceCode] || '';
+                // Fallback for case sensitivity
+                img.onerror = function() {
+                    this.onerror = null;
+                    this.src = `./Assets/${pieceCode}.png`;
+                };
                 square.appendChild(img);
             }
             container.appendChild(square);
@@ -208,24 +205,29 @@ function renderRawBoard(elementId, gridData) {
 }
 
 function switchView(viewName) {
-    document.getElementById('view-landing').classList.add('hidden');
-    document.getElementById('view-dashboard').classList.add('hidden');
-    document.getElementById('view-review').classList.add('hidden');
-    document.getElementById('view-profile').classList.add('hidden');
+    const landing = document.getElementById('view-landing');
+    const dashboard = document.getElementById('view-dashboard');
+    const review = document.getElementById('view-review');
+    const profile = document.getElementById('view-profile');
 
-    if(viewName === 'landing') {
-        document.getElementById('view-landing').classList.remove('hidden');
+    if (landing) landing.classList.add('hidden');
+    if (dashboard) dashboard.classList.add('hidden');
+    if (review) review.classList.add('hidden');
+    if (profile) profile.classList.add('hidden');
+
+    if (viewName === 'landing' && landing) {
+        landing.classList.remove('hidden');
         renderRawBoard('landing-board', INITIAL_BOARD);
-    } else if(viewName === 'dashboard') {
-        document.getElementById('view-dashboard').classList.remove('hidden');
+    } else if (viewName === 'dashboard' && dashboard) {
+        dashboard.classList.remove('hidden');
         fetchGamesFromDatabase();
-    } else if(viewName === 'review') {
-        document.getElementById('view-review').classList.remove('hidden');
+    } else if (viewName === 'review' && review) {
+        review.classList.remove('hidden');
         gameStartSound.currentTime = 0;
         gameStartSound.play().catch(() => {});
         updateReviewUI();
-    } else if(viewName === 'profile') {
-        document.getElementById('view-profile').classList.remove('hidden');
+    } else if (viewName === 'profile' && profile) {
+        profile.classList.remove('hidden');
         loadProfileData();
     }
 }
@@ -233,13 +235,16 @@ function switchView(viewName) {
 async function loadProfileData() {
     if (!currentUser || !supabaseClient) return;
 
-    // Reset input fields to current user defaults
-    document.getElementById('profile-email').value = currentUser.email || '';
-    document.getElementById('profile-name').value = currentUser.user_metadata?.full_name || '';
-    document.getElementById('profile-chesscom').value = '';
-    document.getElementById('profile-lichess').value = '';
+    const emailInput = document.getElementById('profile-email');
+    const nameInput = document.getElementById('profile-name');
+    const chesscomInput = document.getElementById('profile-chesscom');
+    const lichessInput = document.getElementById('profile-lichess');
 
-    // Strictly fetch profile row matching current user ID
+    if (emailInput) emailInput.value = currentUser.email || '';
+    if (nameInput) nameInput.value = currentUser.user_metadata?.full_name || '';
+    if (chesscomInput) chesscomInput.value = '';
+    if (lichessInput) lichessInput.value = '';
+
     const { data, error } = await supabaseClient
         .from('profiles')
         .select('*')
@@ -247,9 +252,9 @@ async function loadProfileData() {
         .maybeSingle();
 
     if (!error && data) {
-        document.getElementById('profile-name').value = data.full_name || currentUser.user_metadata?.full_name || '';
-        document.getElementById('profile-chesscom').value = data.chesscom_alias || '';
-        document.getElementById('profile-lichess').value = data.lichess_alias || '';
+        if (nameInput) nameInput.value = data.full_name || currentUser.user_metadata?.full_name || '';
+        if (chesscomInput) chesscomInput.value = data.chesscom_alias || '';
+        if (lichessInput) lichessInput.value = data.lichess_alias || '';
     }
 }
 
@@ -257,20 +262,22 @@ async function handleProfileUpdate(e) {
     e.preventDefault();
     if (!currentUser || !supabaseClient) return;
 
-    const fullName = document.getElementById('profile-name').value.trim();
-    const newEmail = document.getElementById('profile-email').value.trim();
-    const chesscomAlias = document.getElementById('profile-chesscom').value.trim();
-    const lichessAlias = document.getElementById('profile-lichess').value.trim();
+    const fullName = document.getElementById('profile-name')?.value.trim() || '';
+    const newEmail = document.getElementById('profile-email')?.value.trim() || '';
+    const chesscomAlias = document.getElementById('profile-chesscom')?.value.trim() || '';
+    const lichessAlias = document.getElementById('profile-lichess')?.value.trim() || '';
     const msgEl = document.getElementById('profile-message');
 
-    msgEl.classList.remove('hidden', 'bg-red-500/20', 'text-red-400', 'bg-green-500/20', 'text-green-400');
+    if (msgEl) msgEl.classList.remove('hidden', 'bg-red-500/20', 'text-red-400', 'bg-green-500/20', 'text-green-400');
 
     if (newEmail && newEmail !== currentUser.email) {
         const { error: emailError } = await supabaseClient.auth.updateUser({ email: newEmail });
         if (emailError) {
-            msgEl.innerText = emailError.message;
-            msgEl.classList.add('bg-red-500/20', 'text-red-400');
-            msgEl.classList.remove('hidden');
+            if (msgEl) {
+                msgEl.innerText = emailError.message;
+                msgEl.classList.add('bg-red-500/20', 'text-red-400');
+                msgEl.classList.remove('hidden');
+            }
             return;
         }
     }
@@ -286,14 +293,16 @@ async function handleProfileUpdate(e) {
             updated_at: new Date()
         });
 
-    if (profileError) {
-        msgEl.innerText = profileError.message;
-        msgEl.classList.add('bg-red-500/20', 'text-red-400');
-    } else {
-        msgEl.innerText = "Profile updated successfully!";
-        msgEl.classList.add('bg-green-500/20', 'text-green-400');
+    if (msgEl) {
+        if (profileError) {
+            msgEl.innerText = profileError.message;
+            msgEl.classList.add('bg-red-500/20', 'text-red-400');
+        } else {
+            msgEl.innerText = "Profile updated successfully!";
+            msgEl.classList.add('bg-green-500/20', 'text-green-400');
+        }
+        msgEl.classList.remove('hidden');
     }
-    msgEl.classList.remove('hidden');
 }
 
 function checkAuthAndSwitch(targetView) {
@@ -306,34 +315,39 @@ function checkAuthAndSwitch(targetView) {
 
 function openAuthModal(mode) {
     authMode = mode;
-    document.getElementById('auth-modal').classList.remove('hidden');
-    document.getElementById('auth-modal').classList.add('flex');
+    const modal = document.getElementById('auth-modal');
+    if (!modal) return;
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
     document.getElementById('auth-modal-title').innerText = mode === 'login' ? 'Log In to Kastled' : 'Create Account';
     document.getElementById('auth-error').classList.add('hidden');
 
     const nameField = document.getElementById('name-field-container');
-    if (mode === 'signup') {
-        nameField.classList.remove('hidden');
-    } else {
-        nameField.classList.add('hidden');
+    if (nameField) {
+        if (mode === 'signup') nameField.classList.remove('hidden');
+        else nameField.classList.add('hidden');
     }
 }
 
 function closeAuthModal() {
-    document.getElementById('auth-modal').classList.add('hidden');
-    document.getElementById('auth-modal').classList.remove('flex');
+    const modal = document.getElementById('auth-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
 }
 
 async function handleAuthSubmit(e) {
     e.preventDefault();
     const email = document.getElementById('auth-email').value;
     const password = document.getElementById('auth-password').value;
-    const fullName = document.getElementById('auth-name').value;
+    const fullName = document.getElementById('auth-name')?.value || '';
     const errorEl = document.getElementById('auth-error');
-    errorEl.classList.add('hidden');
+    if (errorEl) errorEl.classList.add('hidden');
 
     if (!supabaseClient) {
-        alert('Please configure your Supabase URL and Key in the script header.');
+        alert('Please configure your Supabase credentials.');
         return;
     }
 
@@ -357,15 +371,17 @@ async function handleAuthSubmit(e) {
         });
 
         if (signupRes.error) {
-            errorEl.innerText = signupRes.error.message;
-            errorEl.classList.remove('hidden');
+            if (errorEl) {
+                errorEl.innerText = signupRes.error.message;
+                errorEl.classList.remove('hidden');
+            }
         } else {
             currentUser = signupRes.data.user;
             updateAuthHeader();
             closeAuthModal();
             switchView('dashboard');
         }
-    } else {
+    } else if (errorEl) {
         errorEl.innerText = loginRes.error.message;
         errorEl.classList.remove('hidden');
     }
@@ -381,22 +397,33 @@ async function logout() {
 }
 
 function openImportModal() {
-    document.getElementById('import-modal').classList.remove('hidden');
-    document.getElementById('import-modal').classList.add('flex');
+    const modal = document.getElementById('import-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
 }
 
 function closeImportModal() {
-    document.getElementById('import-modal').classList.add('hidden');
-    document.getElementById('import-modal').classList.remove('flex');
+    const modal = document.getElementById('import-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
 }
 
-// --- CHESS.COM IMPORT WORKFLOW WITH DUPLICATE PREVENTION ---
+// --- CHESS.COM IMPORT WORKFLOW ---
 async function openChessComModal() {
     if (!currentUser) return alert('You must be logged in.');
 
-    document.getElementById('chesscom-modal').classList.remove('hidden');
-    document.getElementById('chesscom-modal').classList.add('flex');
+    const modal = document.getElementById('chesscom-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
     const contentEl = document.getElementById('chesscom-content');
+    if (!contentEl) return;
     contentEl.innerHTML = `<p class="text-sm text-gray-300">Checking your profile for Chess.com alias...</p>`;
 
     const { data: profile, error } = await supabaseClient
@@ -447,7 +474,7 @@ async function openChessComModal() {
         fetchedChessComGames = monthData.games.slice(-20).reverse();
 
         let listHtml = `
-            <p class="text-xs text-gray-400">Select games to import from <b>${username}'s</b> recent matches (duplicates are marked):</p>
+            <p class="text-xs text-gray-400">Select games to import from <b>${username}'s</b> recent matches:</p>
             <div class="max-h-64 overflow-y-auto space-y-2 divide-y divide-gray-800 pr-2">
         `;
 
@@ -483,8 +510,11 @@ async function openChessComModal() {
 }
 
 function closeChessComModal() {
-    document.getElementById('chesscom-modal').classList.add('hidden');
-    document.getElementById('chesscom-modal').classList.remove('flex');
+    const modal = document.getElementById('chesscom-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
 }
 
 async function importSelectedChessComGames() {
@@ -580,14 +610,13 @@ async function saveImportedGame() {
     }
 
     const resultText = (pgnResult && pgnResult !== '*') ? pgnResult : 'Reviewed';
-    const accuracyValue = 'Pending';
 
     const newGame = {
         user_id: currentUser.id,
         opponent: opponentName,
         result: resultText,
         date: gameDate,
-        accuracy: accuracyValue,
+        accuracy: 'Pending',
         pgn: pgn
     };
 
@@ -628,6 +657,7 @@ async function fetchGamesFromDatabase() {
 
 function renderGamesList() {
     const container = document.getElementById('games-list');
+    if (!container) return;
     container.innerHTML = '';
 
     if (savedGames.length === 0) {
@@ -702,4 +732,13 @@ function navigateMove(step) {
                 moveSound.play().catch(() => {});
             }
         }
+    } else if (step === -1 && currentReviewIndex > 0) {
+        currentReviewIndex--;
+        activeGame.undo();
+
+        moveSound.currentTime = 0;
+        moveSound.play().catch(() => {});
     }
+
+    updateReviewUI();
+}
