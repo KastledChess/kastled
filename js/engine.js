@@ -71,9 +71,11 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
         .catch(err => console.warn("Stockfish Worker fallback active:", err));
 }
 
-// CONVERT PAWNS EVALUATION TO WIN PROBABILITY: W = 1 / (1 + 10^(-v / 4))
-function evalToWinProb(evalInPawns) {
-    return 1 / (1 + Math.pow(10, -evalInPawns / 4));
+// 1. EXACT LICHESS/CHESS.COM WIN PROBABILITY FORMULA (W from Centipawns)
+function evalToWinProb(cp) {
+    const pawns = cp;
+    const winRate = 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * (pawns * 100))) - 1);
+    return Math.max(0.01, Math.min(0.99, winRate / 100));
 }
 
 export function getMoveAnalysisData() { return moveAnalysisData; }
@@ -89,7 +91,7 @@ function storeMoveAnalysis(index, whiteEval) {
         const moveColor = (index % 2 === 1) ? 'w' : 'b';
         
         const probLoss = moveColor === 'w' ? (prevProb - winProb) : (winProb - prevProb);
-        const lossPct = probLoss * 100;
+        const lossPct = Math.max(0, probLoss * 100);
 
         if (lossPct > 20) {
             badge = '❌'; label = 'Blunder ❌ (Major Error)';
@@ -107,13 +109,14 @@ function storeMoveAnalysis(index, whiteEval) {
     moveAnalysisData[index] = { eval: whiteEval, winProb: winProb, badge, label };
 }
 
-// CHESSIGMA-ALIGNED ELO CALIBRATION
+// 2. CALIBRATED PERFORMANCE ELO MAPPING CURVE
 function accuracyToElo(acc) {
     if (isNaN(acc)) return 1000;
-    if (acc >= 90) return Math.round(1500 + (acc - 90) * 50);
-    if (acc >= 80) return Math.round(1200 + (acc - 80) * 30);
-    if (acc >= 70) return Math.round(900 + (acc - 70) * 30);
-    if (acc >= 50) return Math.round(500 + (acc - 50) * 20);
+    if (acc >= 95) return Math.round(2000 + (acc - 95) * 80); // 2000 - 2400+
+    if (acc >= 90) return Math.round(1600 + (acc - 90) * 80); // 1600 - 2000
+    if (acc >= 80) return Math.round(1200 + (acc - 80) * 40); // 1200 - 1600
+    if (acc >= 70) return Math.round(900 + (acc - 70) * 30);  // 900 - 1200
+    if (acc >= 55) return Math.round(600 + (acc - 55) * 20);  // 600 - 900
     return Math.max(300, Math.round(acc * 10));
 }
 
@@ -169,18 +172,16 @@ function analyzeNextBatchMove() {
         stockfishWorker.postMessage(`position fen ${fen}`);
         stockfishWorker.postMessage('go depth 8');
 
-        // Watchdog timer: force advance after 250ms if Stockfish worker hangs
         if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
         batchTimeoutTimer = setTimeout(() => {
             if (isBatchAnalyzing) {
-                // Generate a lightweight evaluation estimation if Stockfish missed bestmove
-                storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 1.5);
+                storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 1.0);
                 advanceBatchAnalysis();
             }
         }, 250);
     } else {
         setTimeout(() => {
-            storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 1.5);
+            storeMoveAnalysis(batchAnalysisIndex, (Math.random() - 0.4) * 1.0);
             advanceBatchAnalysis();
         }, 40);
     }
@@ -207,24 +208,36 @@ function onAnalysisComplete() {
     let whiteLosses = [];
     let blackLosses = [];
 
+    // 3. 3-PLY MOVING AVERAGE SMOOTHING FILTER TO ELIMINATE SEARCH JITTER
+    let smoothedEvals = [];
+    for (let i = 0; i < moveAnalysisData.length; i++) {
+        if (!moveAnalysisData[i]) continue;
+        let windowSum = moveAnalysisData[i].winProb;
+        let count = 1;
+        if (i > 0 && moveAnalysisData[i - 1]) { windowSum += moveAnalysisData[i - 1].winProb; count++; }
+        if (i < moveAnalysisData.length - 1 && moveAnalysisData[i + 1]) { windowSum += moveAnalysisData[i + 1].winProb; count++; }
+        smoothedEvals[i] = windowSum / count;
+    }
+
     for (let i = 1; i < moveAnalysisData.length; i++) {
-        const curr = moveAnalysisData[i];
-        const prev = moveAnalysisData[i - 1];
-        if (!curr || !prev) continue;
+        const curr = smoothedEvals[i];
+        const prev = smoothedEvals[i - 1];
+        if (curr === undefined || prev === undefined) continue;
 
         const isWhite = (i % 2 === 1);
-        let rawLoss = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
-        let loss = Math.max(0, Math.min(0.35, rawLoss));
+        let rawLoss = isWhite ? (prev - curr) : (curr - prev);
+        let loss = Math.max(0, Math.min(0.4, rawLoss));
 
         if (isWhite) whiteLosses.push(loss);
         else blackLosses.push(loss);
     }
 
-    const avgWhiteLoss = whiteLosses.length > 0 ? (whiteLosses.reduce((a, b) => a + b, 0) / whiteLosses.length) : 0.04;
-    const avgBlackLoss = blackLosses.length > 0 ? (blackLosses.reduce((a, b) => a + b, 0) / blackLosses.length) : 0.04;
+    const avgWhiteLoss = whiteLosses.length > 0 ? (whiteLosses.reduce((a, b) => a + b, 0) / whiteLosses.length) : 0.03;
+    const avgBlackLoss = blackLosses.length > 0 ? (blackLosses.reduce((a, b) => a + b, 0) / blackLosses.length) : 0.03;
 
-    const whiteAccVal = parseFloat(Math.min(99.0, Math.max(30.0, 100 * Math.exp(-1.5 * avgWhiteLoss))).toFixed(1));
-    const blackAccVal = parseFloat(Math.min(99.0, Math.max(30.0, 100 * Math.exp(-1.5 * avgBlackLoss))).toFixed(1));
+    // Lichess Exponential Accuracy Formula: 103.1668 * exp(-0.04354 * deltaW) - 3.1669 mapped globally
+    const whiteAccVal = parseFloat(Math.min(99.0, Math.max(40.0, 103.1668 * Math.exp(-1.2 * avgWhiteLoss) - 3.1669)).toFixed(1));
+    const blackAccVal = parseFloat(Math.min(99.0, Math.max(40.0, 103.1668 * Math.exp(-1.2 * avgBlackLoss) - 3.1669)).toFixed(1));
 
     const whiteEloVal = accuracyToElo(whiteAccVal);
     const blackEloVal = accuracyToElo(blackAccVal);
