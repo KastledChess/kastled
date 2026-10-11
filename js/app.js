@@ -269,12 +269,13 @@ async function handleProfileUpdate(e) {
         }
     }
 
-    // Update profiles table
+    // Update profiles table (including email field)
     const { error: profileError } = await supabaseClient
         .from('profiles')
         .upsert({
             id: currentUser.id,
             full_name: fullName,
+            email: newEmail || currentUser.email,
             chesscom_alias: chesscomAlias,
             lichess_alias: lichessAlias,
             updated_at: new Date()
@@ -361,7 +362,7 @@ async function handleAuthSubmit(e) {
         }
     } else {
         errorEl.innerText = loginRes.error.message;
-        errorEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
     }
 }
 
