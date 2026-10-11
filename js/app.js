@@ -42,6 +42,7 @@ const INITIAL_BOARD = [
 let currentUser = null;
 let authMode = 'login';
 let savedGames = [];
+let fetchedChessComGames = [];
 
 let activeGame = typeof Chess !== 'undefined' ? new Chess() : null;
 let reviewHistory = [];
@@ -259,7 +260,6 @@ async function handleProfileUpdate(e) {
 
     msgEl.classList.remove('hidden', 'bg-red-500/20', 'text-red-400', 'bg-green-500/20', 'text-green-400');
 
-    // Update Auth email if changed
     if (newEmail && newEmail !== currentUser.email) {
         const { error: emailError } = await supabaseClient.auth.updateUser({ email: newEmail });
         if (emailError) {
@@ -269,7 +269,6 @@ async function handleProfileUpdate(e) {
         }
     }
 
-    // Update profiles table (including email field)
     const { error: profileError } = await supabaseClient
         .from('profiles')
         .upsert({
@@ -303,7 +302,6 @@ function openAuthModal(mode) {
     document.getElementById('auth-modal').classList.remove('hidden');
     document.getElementById('auth-modal').classList.add('flex');
     document.getElementById('auth-modal-title').innerText = mode === 'login' ? 'Log In to Kastled' : 'Create Account';
-    document.getElementById('auth-submit-btn').innerText = mode === 'login' ? 'Log In' : 'Sign Up';
     document.getElementById('auth-error').classList.add('hidden');
 
     const nameField = document.getElementById('name-field-container');
@@ -362,7 +360,7 @@ async function handleAuthSubmit(e) {
         }
     } else {
         errorEl.innerText = loginRes.error.message;
-        errorEl.classList.remove('hidden');
+        errorEl.classList.add('hidden');
     }
 }
 
@@ -383,6 +381,140 @@ function openImportModal() {
 function closeImportModal() {
     document.getElementById('import-modal').classList.add('hidden');
     document.getElementById('import-modal').classList.remove('flex');
+}
+
+// --- CHESS.COM IMPORT WORKFLOW ---
+async function openChessComModal() {
+    if (!currentUser) return alert('You must be logged in.');
+
+    document.getElementById('chesscom-modal').classList.remove('hidden');
+    document.getElementById('chesscom-modal').classList.add('flex');
+    const contentEl = document.getElementById('chesscom-content');
+    contentEl.innerHTML = `<p class="text-sm text-gray-300">Checking your profile for Chess.com alias...</p>`;
+
+    // Check user profile for Chess.com alias
+    const { data: profile, error } = await supabaseClient
+        .from('profiles')
+        .select('chesscom_alias')
+        .eq('id', currentUser.id)
+        .single();
+
+    if (error || !profile || !profile.chesscom_alias) {
+        contentEl.innerHTML = `
+            <div class="space-y-4">
+                <p class="text-sm text-amber-400 font-semibold">No Chess.com alias found in your profile!</p>
+                <p class="text-xs text-gray-300">Please add your Chess.com username in your Profile settings before importing games.</p>
+                <button onclick="closeChessComModal(); switchView('profile');" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Go to Profile Settings</button>
+            </div>
+        `;
+        return;
+    }
+
+    const username = profile.chesscom_alias.trim();
+    contentEl.innerHTML = `<p class="text-sm text-gray-300">Fetching recent archives for <b>${username}</b> from Chess.com...</p>`;
+
+    try {
+        // Fetch archives list from Chess.com API
+        const archivesRes = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
+        const archivesData = await archivesRes.json();
+
+        if (!archivesData.archives || archivesData.archives.length === 0) {
+            contentEl.innerHTML = `<p class="text-sm text-gray-400">No game archives found for Chess.com user: ${username}</p>`;
+            return;
+        }
+
+        // Fetch the most recent month archive
+        const latestArchiveUrl = archivesData.archives[archivesData.archives.length - 1];
+        const monthRes = await fetch(latestArchiveUrl);
+        const monthData = await monthRes.json();
+
+        if (!monthData.games || monthData.games.length === 0) {
+            contentEl.innerHTML = `<p class="text-sm text-gray-400">No games found in the latest archive month.</p>`;
+            return;
+        }
+
+        // Take the last 15 games for selection
+        fetchedChessComGames = monthData.games.slice(-15).reverse();
+
+        let listHtml = `
+            <p class="text-xs text-gray-400">Select the games you want to import from <b>${username}'s</b> recent matches:</p>
+            <div class="max-h-64 overflow-y-auto space-y-2 divide-y divide-gray-800 pr-2">
+        `;
+
+        fetchedChessComGames.forEach((g, idx) => {
+            const white = g.white.username;
+            const black = g.black.username;
+            const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
+            listHtml += `
+                <div class="pt-2 flex items-center justify-between text-sm">
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" id="cc-game-${idx}" class="w-4 h-4 accent-kastledGold rounded">
+                        <span class="text-white font-medium">${white} vs. ${black} <span class="text-xs text-gray-500 block">${date} (${g.time_class})</span></span>
+                    </label>
+                </div>
+            `;
+        });
+
+        listHtml += `
+            </div>
+            <button onclick="importSelectedChessComGames()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition mt-4" style="background-color:#E5A93C; color:#0B132B;">Import Selected Games</button>
+        `;
+        contentEl.innerHTML = listHtml;
+
+    } catch (err) {
+        console.error('Chess.com API error:', err);
+        contentEl.innerHTML = `<p class="text-sm text-red-400">Failed to connect to Chess.com API. Please verify your username.</p>`;
+    }
+}
+
+function closeChessComModal() {
+    document.getElementById('chesscom-modal').classList.add('hidden');
+    document.getElementById('chesscom-modal').classList.remove('flex');
+}
+
+async function importSelectedChessComGames() {
+    if (!currentUser) return;
+
+    const checkboxes = document.querySelectorAll('[id^="cc-game-"]');
+    const selectedGames = [];
+
+    checkboxes.forEach((cb, idx) => {
+        if (cb.checked) {
+            selectedGames.push(fetchedChessComGames[idx]);
+        }
+    });
+
+    if (selectedGames.length === 0) {
+        return alert('Please select at least one game to import.');
+    }
+
+    let insertCount = 0;
+    for (const g of selectedGames) {
+        const white = g.white.username;
+        const black = g.black.username;
+        const date = new Date(g.end_time * 1000).toISOString().split('T')[0];
+        
+        // Determine result string
+        let res = 'Draw';
+        if (g.white.result === 'win') res = '1-0';
+        else if (g.black.result === 'win') res = '0-1';
+
+        const newGame = {
+            user_id: currentUser.id,
+            opponent: `${white} vs. ${black}`,
+            result: res,
+            date: date,
+            accuracy: 'Pending',
+            pgn: g.pgn || `[White "${white}"]\n[Black "${black}"]\n[Date "${date}"]\n[Result "${res}"]\n\n1. e4 e5 *`
+        };
+
+        const { error } = await supabaseClient.from('games').insert([newGame]);
+        if (!error) insertCount++;
+    }
+
+    closeChessComModal();
+    alert(`Successfully imported ${insertCount} game(s) from Chess.com!`);
+    fetchGamesFromDatabase();
 }
 
 // Helper to extract PGN Header Tags
@@ -473,7 +605,7 @@ function renderGamesList() {
     container.innerHTML = '';
 
     if (savedGames.length === 0) {
-        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import PGN" to add one!</div>`;
+        container.innerHTML = `<div class="p-6 text-center text-gray-400 text-sm">No saved games found for this account. Click "+ Import PGN" or "+ Import Chess.com" to add some!</div>`;
         return;
     }
 
