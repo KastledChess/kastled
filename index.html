@@ -9,13 +9,16 @@
     <!-- Chess.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.com/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Stockfish JS Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js"></script>
+    
     <script>
         // REPLACE THESE WITH YOUR KASTLEDDATA SUPABASE CREDENTIALS
-        const SUPABASE_URL = "https://supabase.com/dashboard/project/sgpafvuexdmnbdbvveny/settings/api-keys";
-        const SUPABASE_ANON_KEY = "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
+        const SUPABASE_URL = "YOUR_SUPABASE_URL_HERE";
+        const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY_HERE";
         
-        const supabaseClient = (SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE") 
+        const supabaseClient = (SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_URL !== "") 
             ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
             : null;
 
@@ -26,14 +29,21 @@
                         kastledNavy: '#0B132B',
                         kastledGold: '#E5A93C',
                         kastledGoldHover: '#d49830',
-                        kastledBoardDark: '#6B82A8',  /* Muted steel blue */
-                        kastledBoardLight: '#EAE3D2'  /* Creamy off-white */
+                        kastledBoardDark: '#6B82A8',
+                        kastledBoardLight: '#EAE3D2'
                     }
                 }
             }
         }
     </script>
     <style>
+        /* Pure CSS Fallbacks to prevent white screen if Tailwind fails */
+        body {
+            background-color: #0B132B !important;
+            color: #FFFFFF !important;
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
         .gold-divider {
             height: 2px;
             background: linear-gradient(90deg, transparent, #E5A93C, transparent);
@@ -43,8 +53,8 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             border-radius: 8px;
             overflow: hidden;
+            background-color: #0B132B;
         }
-        /* Strict square styling for uniform 8x8 grid */
         .chess-grid {
             display: grid;
             grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -61,6 +71,13 @@
             justify-content: center;
             position: relative;
             overflow: hidden;
+        }
+        /* Explicit Square Color Fallbacks */
+        .square-dark {
+            background-color: #6B82A8 !important;
+        }
+        .square-light {
+            background-color: #EAE3D2 !important;
         }
         .piece-img {
             width: 85%;
@@ -86,9 +103,8 @@
             <a href="#" onclick="switchView('dashboard')" class="hover:text-kastledGold transition">Puzzles</a>
             <a href="#" class="hover:text-kastledGold transition">Clans</a>
         </nav>
-        <!-- Auth Navigation Area -->
         <div id="auth-nav-container" class="flex items-center space-x-4">
-            <!-- Dynamically populated based on login state -->
+            <!-- Dynamically populated -->
         </div>
     </header>
 
@@ -103,15 +119,15 @@
                 </div>
             </div>
             <div class="text-center lg:text-left space-y-6">
-                <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-tight">
-                    Experience Chess.<br><span class="text-kastledGold">Redefined on Kastled.</span>
+                <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-tight text-white">
+                    Experience Chess.<br><span class="text-kastledGold" style="color:#E5A93C;">Redefined on Kastled.</span>
                 </h1>
-                <p class="text-gray-300 text-lg max-w-xl">
+                <p class="text-gray-300 text-lg max-w-xl" style="color:#D1D5DB;">
                     Join a premium platform where strategy meets sophistication. Analyze matches with high-precision engines and track your growth.
                 </p>
                 <div class="gold-divider my-4"></div>
                 <div>
-                    <button onclick="checkAuthAndSwitch('dashboard')" class="w-full sm:w-auto px-10 py-4 rounded-full bg-kastledGold text-kastledNavy font-black text-lg hover:bg-kastledGoldHover transition shadow-2xl tracking-wider">
+                    <button onclick="checkAuthAndSwitch('dashboard')" class="w-full sm:w-auto px-10 py-4 rounded-full bg-kastledGold text-kastledNavy font-black text-lg hover:bg-kastledGoldHover transition shadow-2xl tracking-wider" style="background-color:#E5A93C; color:#0B132B;">
                         Get Started
                     </button>
                 </div>
@@ -120,20 +136,20 @@
 
         <!-- VIEW 2: SAVED GAMES & IMPORT DASHBOARD -->
         <section id="view-dashboard" class="w-full max-w-5xl mx-auto hidden space-y-8">
-            <div class="flex flex-col sm:flex-row justify-between items-center bg-gray-900/60 p-6 rounded-2xl border border-gray-800 gap-4">
+            <div class="flex flex-col sm:flex-row justify-between items-center bg-gray-900/60 p-6 rounded-2xl border border-gray-800 gap-4" style="background-color: rgba(17,24,39,0.8);">
                 <div>
-                    <h2 class="text-2xl font-bold text-kastledGold">My Saved Games</h2>
+                    <h2 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">My Saved Games</h2>
                     <p class="text-gray-400 text-sm">Import PGN files or review past matches analyzed by Stockfish.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button onclick="openImportModal()" class="px-5 py-2.5 rounded-xl bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition flex items-center gap-2">
+                    <button onclick="openImportModal()" class="px-5 py-2.5 rounded-xl bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition flex items-center gap-2" style="background-color:#E5A93C; color:#0B132B;">
                         <span>+ Import New Game</span>
                     </button>
                     <button onclick="logout()" class="px-4 py-2.5 rounded-xl border border-red-500/50 text-red-400 hover:bg-red-500/10 text-sm transition">Log Out</button>
                 </div>
             </div>
 
-            <div class="bg-gray-900/40 rounded-2xl border border-gray-800 overflow-hidden">
+            <div class="bg-gray-900/40 rounded-2xl border border-gray-800 overflow-hidden" style="background-color: rgba(17,24,39,0.5);">
                 <div class="p-4 border-b border-gray-800 font-semibold text-gray-300 grid grid-cols-12 text-sm">
                     <div class="col-span-5">Opponents / Event</div>
                     <div class="col-span-3">Result / Date</div>
@@ -148,37 +164,32 @@
 
         <!-- VIEW 3: GAME REVIEW SCREEN -->
         <section id="view-review" class="w-full max-w-7xl mx-auto hidden grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <!-- Left: Board & Evaluation bar -->
             <div class="lg:col-span-7 flex flex-col items-center justify-center space-y-4">
                 <div class="flex items-center space-x-4 w-full max-w-[460px] justify-between">
                     <span id="review-opponent" class="text-sm font-semibold text-gray-300">Black: Stockfish 16</span>
-                    <span id="eval-score" class="px-3 py-1 bg-gray-800 rounded-lg text-xs font-mono text-kastledGold">Eval: 0.0</span>
+                    <span id="eval-score" class="px-3 py-1 bg-gray-800 rounded-lg text-xs font-mono text-kastledGold" style="color:#E5A93C;">Eval: 0.0</span>
                 </div>
                 <div class="flex items-center gap-3">
-                    <!-- Eval Bar -->
                     <div class="w-3 h-[360px] sm:h-[420px] bg-gray-700 rounded-full overflow-hidden flex flex-col justify-end">
-                        <div id="eval-bar-fill" class="w-full bg-kastledGold transition-all duration-300" style="height: 50%;"></div>
+                        <div id="eval-bar-fill" class="w-full bg-kastledGold transition-all duration-300" style="height: 50%; background-color:#E5A93C;"></div>
                     </div>
-                    <!-- Chess Board -->
                     <div class="board-border w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
                         <div id="review-board" class="chess-grid"></div>
                     </div>
                 </div>
                 <span id="review-player" class="text-sm font-semibold text-gray-300">White: You</span>
 
-                <!-- Navigation Controls -->
                 <div class="flex items-center space-x-3">
                     <button onclick="navigateMove(-1)" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold">◀ Prev</button>
-                    <button onclick="navigateMove(1)" class="px-4 py-2 bg-kastledGold text-kastledNavy hover:bg-kastledGoldHover rounded-lg text-sm font-bold">Next ▶</button>
+                    <button onclick="navigateMove(1)" class="px-4 py-2 bg-kastledGold text-kastledNavy hover:bg-kastledGoldHover rounded-lg text-sm font-bold" style="background-color:#E5A93C; color:#0B132B;">Next ▶</button>
                     <button onclick="switchView('dashboard')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-400">Back to Games</button>
                 </div>
             </div>
 
-            <!-- Right: Move classification & Stockfish suggestions -->
-            <div class="lg:col-span-5 bg-gray-900/60 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between space-y-6">
+            <div class="lg:col-span-5 bg-gray-900/60 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between space-y-6" style="background-color: rgba(17,24,39,0.8);">
                 <div>
                     <div class="flex justify-between items-center pb-4 border-b border-gray-800">
-                        <h3 class="text-xl font-bold text-kastledGold">Game Review</h3>
+                        <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Game Review</h3>
                         <span id="move-accuracy-badge" class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-bold">Accuracy: 94.2%</span>
                     </div>
 
@@ -189,7 +200,7 @@
                         </div>
                         <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
                             <div class="text-xs text-gray-400 uppercase tracking-wider">Best Alternative (Stockfish)</div>
-                            <div id="best-move-text" class="text-sm font-mono text-kastledGold mt-1">-</div>
+                            <div id="best-move-text" class="text-sm font-mono text-kastledGold mt-1" style="color:#E5A93C;">-</div>
                         </div>
                     </div>
                 </div>
@@ -205,34 +216,39 @@
     </main>
 
     <!-- MODALS -->
-    <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 relative">
+    <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 relative" style="background-color:#111827;">
             <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
-            <h3 id="auth-modal-title" class="text-2xl font-bold text-kastledGold">Log In to Kastled</h3>
+            <h3 id="auth-modal-title" class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Log In / Sign Up</h3>
+            <div id="auth-error" class="text-xs text-red-400 hidden"></div>
             <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div id="name-field-container">
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Full Name</label>
+                    <input type="text" id="auth-name" placeholder="John Doe" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
                 <div>
                     <label class="block text-xs text-gray-400 uppercase mb-1">Email Address</label>
-                    <input type="email" id="auth-email" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold">
+                    <input type="email" id="auth-email" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-400 uppercase mb-1">Password</label>
-                    <input type="password" id="auth-password" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold">
+                    <input type="password" id="auth-password" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
                 </div>
-                <button type="submit" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition">Continue</button>
+                <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Continue</button>
             </form>
         </div>
     </div>
 
-    <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative">
+    <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative" style="background-color:#111827;">
             <button onclick="closeImportModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
-            <h3 class="text-2xl font-bold text-kastledGold">Import Game (PGN)</h3>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import Game (PGN)</h3>
             <div class="space-y-4">
                 <div>
                     <label class="block text-xs text-gray-400 uppercase mb-1">Paste PGN Notation</label>
-                    <textarea id="import-pgn-input" rows="6" placeholder="1. e4 e5 2. Nf3 Nc6..." class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold"></textarea>
+                    <textarea id="import-pgn-input" rows="6" placeholder="1. e4 e5 2. Nf3 Nc6..." class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;"></textarea>
                 </div>
-                <button onclick="saveImportedGame()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition">Import & Analyze</button>
+                <button onclick="saveImportedGame()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Import & Analyze</button>
             </div>
         </div>
     </div>
@@ -264,14 +280,24 @@
             ['wR','wN','wB','wQ','wK','wB','wN','wR']
         ];
 
-        let currentUser = localStorage.getItem('kastled_user') || null;
+        let currentUser = null;
+        let authMode = 'login';
         let savedGames = [];
 
         let activeGame = typeof Chess !== 'undefined' ? new Chess() : null;
         let reviewHistory = [];
         let currentReviewIndex = 0;
 
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (supabaseClient) {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                currentUser = session ? session.user : null;
+                
+                supabaseClient.auth.onAuthStateChange((_event, session) => {
+                    currentUser = session ? session.user : null;
+                    updateAuthHeader();
+                });
+            }
             updateAuthHeader();
             renderRawBoard('landing-board', INITIAL_BOARD);
         });
@@ -284,14 +310,14 @@
                 container.innerHTML = `
                     <div class="flex items-center space-x-3 bg-gray-900/80 px-4 py-2 rounded-full border border-gray-800">
                         <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
-                        <span class="text-xs text-gray-300 font-mono">${currentUser}</span>
+                        <span class="text-xs text-gray-300 font-mono">${currentUser.email}</span>
                     </div>
                     <button onclick="logout()" class="px-4 py-2 rounded-full border border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs font-bold transition">Log Out</button>
                 `;
             } else {
                 container.innerHTML = `
                     <button onclick="openAuthModal('login')" class="px-5 py-2 rounded-full border border-gray-600 hover:border-kastledGold text-sm font-semibold transition">Log In</button>
-                    <button onclick="openAuthModal('signup')" class="px-5 py-2 rounded-full bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition shadow-lg">SIGN UP</button>
+                    <button onclick="openAuthModal('signup')" class="px-5 py-2 rounded-full bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition shadow-lg" style="background-color:#E5A93C; color:#0B132B;">SIGN UP</button>
                 `;
             }
         }
@@ -305,7 +331,7 @@
                 for (let c = 0; c < 8; c++) {
                     const square = document.createElement('div');
                     const isDark = (r + c) % 2 === 1;
-                    square.className = `square ${isDark ? 'bg-kastledBoardDark' : 'bg-kastledBoardLight'}`;
+                    square.className = `square ${isDark ? 'square-dark' : 'square-light'}`;
 
                     const pieceCode = gridData[r][c];
                     if (pieceCode) {
@@ -345,9 +371,19 @@
         }
 
         function openAuthModal(mode) {
+            authMode = mode;
             document.getElementById('auth-modal').classList.remove('hidden');
             document.getElementById('auth-modal').classList.add('flex');
             document.getElementById('auth-modal-title').innerText = mode === 'login' ? 'Log In to Kastled' : 'Create Account';
+            document.getElementById('auth-submit-btn').innerText = mode === 'login' ? 'Log In' : 'Sign Up';
+            document.getElementById('auth-error').classList.add('hidden');
+
+            const nameField = document.getElementById('name-field-container');
+            if (mode === 'signup') {
+                nameField.classList.remove('hidden');
+            } else {
+                nameField.classList.add('hidden');
+            }
         }
 
         function closeAuthModal() {
@@ -355,19 +391,58 @@
             document.getElementById('auth-modal').classList.remove('flex');
         }
 
-        function handleAuthSubmit(e) {
+        async function handleAuthSubmit(e) {
             e.preventDefault();
             const email = document.getElementById('auth-email').value;
-            currentUser = email;
-            localStorage.setItem('kastled_user', email);
-            updateAuthHeader();
-            closeAuthModal();
-            switchView('dashboard');
+            const password = document.getElementById('auth-password').value;
+            const fullName = document.getElementById('auth-name').value;
+            const errorEl = document.getElementById('auth-error');
+            errorEl.classList.add('hidden');
+
+            if (!supabaseClient) {
+                alert('Please configure your Supabase URL and Key in the script header.');
+                return;
+            }
+
+            let loginRes = await supabaseClient.auth.signInWithPassword({ email, password });
+
+            if (!loginRes.error) {
+                currentUser = loginRes.data.user;
+                updateAuthHeader();
+                closeAuthModal();
+                switchView('dashboard');
+                return;
+            }
+
+            if (authMode === 'signup' || loginRes.error.message.includes("Invalid login credentials")) {
+                let signupRes = await supabaseClient.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: { full_name: fullName }
+                    }
+                });
+
+                if (signupRes.error) {
+                    errorEl.innerText = signupRes.error.message;
+                    errorEl.classList.remove('hidden');
+                } else {
+                    currentUser = signupRes.data.user;
+                    updateAuthHeader();
+                    closeAuthModal();
+                    switchView('dashboard');
+                }
+            } else {
+                errorEl.innerText = loginRes.error.message;
+                errorEl.classList.remove('hidden');
+            }
         }
 
-        function logout() {
+        async function logout() {
+            if (supabaseClient) {
+                await supabaseClient.auth.signOut();
+            }
             currentUser = null;
-            localStorage.removeItem('kastled_user');
             updateAuthHeader();
             switchView('landing');
         }
@@ -385,9 +460,10 @@
         async function saveImportedGame() {
             const pgn = document.getElementById('import-pgn-input').value;
             if(!pgn) return alert('Please enter valid PGN');
+            if(!currentUser) return alert('You must be logged in to save games.');
             
             const newGame = {
-                user_email: currentUser,
+                user_id: currentUser.id,
                 opponent: 'Custom Analysis',
                 result: 'Reviewed',
                 date: new Date().toISOString().split('T')[0],
@@ -397,11 +473,10 @@
 
             if (supabaseClient) {
                 const { error } = await supabaseClient.from('games').insert([newGame]);
-                if (error) console.error('Database save error:', error);
-            } else {
-                let localGames = JSON.parse(localStorage.getItem(`kastled_games_${currentUser}`)) || [];
-                localGames.unshift(newGame);
-                localStorage.setItem(`kastled_games_${currentUser}`, JSON.stringify(localGames));
+                if (error) {
+                    console.error('Database save error:', error);
+                    alert('Error saving game to database.');
+                }
             }
 
             closeImportModal();
@@ -415,7 +490,7 @@
                 const { data, error } = await supabaseClient
                     .from('games')
                     .select('*')
-                    .eq('user_email', currentUser)
+                    .eq('user_id', currentUser.id)
                     .order('created_at', { ascending: false });
 
                 if (!error && data) {
@@ -424,8 +499,6 @@
                     console.error('Error fetching games:', error);
                     savedGames = [];
                 }
-            } else {
-                savedGames = JSON.parse(localStorage.getItem(`kastled_games_${currentUser}`)) || [];
             }
 
             renderGamesList();
@@ -447,8 +520,8 @@
                 row.innerHTML = `
                     <div class="col-span-5 font-semibold text-white">${game.opponent}</div>
                     <div class="col-span-3 text-gray-400">${game.result} <span class="text-xs block text-gray-500">${game.date}</span></div>
-                    <div class="col-span-2 text-kastledGold font-bold">${game.accuracy}</div>
-                    <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold">Review</span></div>
+                    <div class="col-span-2 text-kastledGold font-bold" style="color:#E5A93C;">${game.accuracy}</div>
+                    <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span></div>
                 `;
                 container.appendChild(row);
             });
