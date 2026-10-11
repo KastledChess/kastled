@@ -11,9 +11,9 @@ let getActiveGame = null;
 let getCurrentReviewIndex = null;
 let updateEvalUICallback = null;
 
-// 10-Category Definitions Lookup Helper
+// 10-Category Lookup Master
 export function getClassificationMeta(catCode) {
-    switch(catCode) {
+    switch(parseInt(catCode, 10)) {
         case 1:  return { name: 'Brilliant', badge: '‼', class: 'bg-teal-500 text-white' };
         case 2:  return { name: 'Great', badge: '!', class: 'bg-blue-500 text-white' };
         case 3:  return { name: 'Best', badge: '⭐', class: 'bg-lime-500 text-white' };
@@ -101,11 +101,13 @@ function evalToWinProb(cpPawns) {
 }
 
 export function getMoveAnalysisData() { return moveAnalysisData; }
-export function setMoveAnalysisData(data) { moveAnalysisData = data; }
+export function setMoveAnalysisData(data) { moveAnalysisData = data || []; }
 
 function storeMoveEvalOnly(index, whiteEval) {
     const winProb = evalToWinProb(whiteEval);
-    moveAnalysisData[index] = { eval: whiteEval, winProb };
+    if (!moveAnalysisData[index]) moveAnalysisData[index] = {};
+    moveAnalysisData[index].eval = whiteEval;
+    moveAnalysisData[index].winProb = winProb;
 }
 
 let currentBatchGame = null;
@@ -125,7 +127,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     currentBatchGame.reset();
     moveAnalysisData = [];
-    moveAnalysisData[0] = { eval: 0.0, winProb: 0.5 };
+    moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, cat: 3 };
 
     return new Promise((resolve) => {
         batchResolveCallback = resolve;
@@ -195,56 +197,87 @@ function parsePgnHeader(pgnText, tag) {
     return match ? match[1] : null;
 }
 
+// FULL 10-CATEGORY CLASSIFICATION ENGINE
 function onAnalysisComplete() {
     isBatchAnalyzing = false;
     if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
 
     const progressText = document.getElementById('analysis-progress-text');
     const progressBar = document.getElementById('analysis-progress-bar');
-    if (progressText) progressText.innerText = 'Analysis Complete! Processing Categories...';
+    if (progressText) progressText.innerText = 'Analysis Complete! Saving Classifications...';
     if (progressBar) progressBar.style.width = '100%';
 
     let structuredAnalysis = [];
     let whiteScores = [];
     let blackScores = [];
 
-    structuredAnalysis[0] = {
-        ply: 0,
-        move: 'Start',
-        eval: 0.0,
-        cat: 3,
-        code: 'Best',
-        bestMove: ''
-    };
+    structuredAnalysis[0] = { ply: 0, move: 'Start', eval: 0.0, cat: 3, code: 'Best', bestMove: '' };
 
-    // Classify each move into categories 1 through 10
-    for (let i = 1; i < moveAnalysisData.length; i++) {
-        const curr = moveAnalysisData[i];
-        const prev = moveAnalysisData[i - 1];
-        if (!curr || !prev) continue;
+    for (let i = 1; i <= currentBatchHistory.length; i++) {
+        const curr = moveAnalysisData[i] || { eval: 0.0, winProb: 0.5 };
+        const prev = moveAnalysisData[i - 1] || { eval: 0.0, winProb: 0.5 };
+        const moveObj = currentBatchHistory[i - 1];
 
         const isWhite = (i % 2 === 1);
         const winLossPct = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
+        const opponentPrevWinLoss = isWhite ? (moveAnalysisData[i - 2]?.winProb - prev.winProb) : (prev.winProb - moveAnalysisData[i - 2]?.winProb);
 
-        let catCode = 3; // Default Best
+        let catCode = 3; // Default Best (⭐)
         let scoreValue = 100;
 
-        if (winLossPct > 0.20) {
-            catCode = 10; scoreValue = 0; // Blunder
-        } else if (winLossPct > 0.12) {
-            catCode = 8; scoreValue = 25; // Mistake
-        } else if (winLossPct > 0.06) {
-            catCode = 7; scoreValue = 50; // Inaccuracy
-        } else if (winLossPct > 0.02) {
-            catCode = 4; scoreValue = 85; // Excellent
-        } else if (winLossPct > -0.01) {
-            catCode = 3; scoreValue = 100; // Best
-        } else if (winLossPct <= -0.03) {
-            catCode = 2; scoreValue = 100; // Great
+        // 1. BOOK MOVE CHECK (Opening moves 1-5)
+        if (i <= 10 && winLossPct >= -0.01) {
+            catCode = 6; // Book (📖)
+            scoreValue = 100;
+        }
+        // 2. BLUNDER CHECK
+        else if (winLossPct > 0.20) {
+            catCode = 10; // Blunder (??)
+            scoreValue = 0;
+        }
+        // 3. MISS CHECK (Opponent blundered on previous move, but player failed to punish it)
+        else if (opponentPrevWinLoss > 0.15 && winLossPct > 0.08) {
+            catCode = 9; // Miss (✕)
+            scoreValue = 20;
+        }
+        // 4. MISTAKE CHECK
+        else if (winLossPct > 0.12) {
+            catCode = 8; // Mistake (?)
+            scoreValue = 25;
+        }
+        // 5. INACCURACY CHECK
+        else if (winLossPct > 0.06) {
+            catCode = 7; // Inaccuracy (?!)
+            scoreValue = 50;
+        }
+        // 6. GOOD MOVE CHECK
+        else if (winLossPct > 0.02) {
+            catCode = 5; // Good (✔)
+            scoreValue = 75;
+        }
+        // 7. EXCELLENT MOVE CHECK
+        else if (winLossPct > 0.00) {
+            catCode = 4; // Excellent (👍)
+            scoreValue = 90;
+        }
+        // 8. BRILLIANT MOVE CHECK (Piece captured/sacrificed while maintaining winning eval)
+        else if (moveObj && (moveObj.flags.includes('c') || moveObj.captured) && winLossPct <= -0.02) {
+            catCode = 1; // Brilliant (‼)
+            scoreValue = 100;
+        }
+        // 9. GREAT MOVE CHECK (Significant positive win % shift)
+        else if (winLossPct <= -0.04) {
+            catCode = 2; // Great (!)
+            scoreValue = 100;
+        }
+        // 10. BEST MOVE DEFAULT
+        else {
+            catCode = 3; // Best (⭐)
+            scoreValue = 100;
         }
 
         const meta = getClassificationMeta(catCode);
-        const moveStr = currentBatchHistory[i - 1] || '';
+        const moveStr = moveObj ? moveObj.san : '';
 
         structuredAnalysis[i] = {
             ply: i,
@@ -338,10 +371,22 @@ function onAnalysisComplete() {
 export function analyzeCurrentPosition(activeGame, currentReviewIndex) {
     if (!activeGame || isBatchAnalyzing) return;
     const statusEl = document.getElementById('engine-status');
-    if (statusEl) statusEl.innerText = 'Analyzing...';
-
+    
     if (moveAnalysisData[currentReviewIndex]) {
         if (statusEl) statusEl.innerText = 'Analysis Complete';
+        const currentData = moveAnalysisData[currentReviewIndex];
+        const evalScoreEl = document.getElementById('eval-score');
+        const classificationTextEl = document.getElementById('classification-text');
+        
+        if (evalScoreEl && currentData.eval !== undefined) {
+            const formattedEval = currentData.eval > 0 ? `+${currentData.eval.toFixed(1)}` : currentData.eval.toFixed(1);
+            evalScoreEl.innerText = `Eval: ${formattedEval}`;
+        }
+        
+        if (classificationTextEl && currentData.cat) {
+            const meta = getClassificationMeta(currentData.cat);
+            classificationTextEl.innerText = `${meta.badge} ${meta.name}`;
+        }
         return;
     }
 
