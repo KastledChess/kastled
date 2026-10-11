@@ -65,4 +65,193 @@
                 <p class="text-gray-300 text-lg max-w-xl" style="color:#D1D5DB;">
                     Join a premium platform where strategy meets sophistication. Analyze matches with high-precision engines and track your growth.
                 </p>
-                <div class="gold-divider my
+                <div class="gold-divider my-4"></div>
+                <div>
+                    <button onclick="checkAuthAndSwitch('dashboard')" class="w-full sm:w-auto px-10 py-4 rounded-full bg-kastledGold text-kastledNavy font-black text-lg hover:bg-kastledGoldHover transition shadow-2xl tracking-wider" style="background-color:#E5A93C; color:#0B132B;">
+                        Get Started
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: SAVED GAMES & IMPORT DASHBOARD -->
+        <section id="view-dashboard" class="w-full max-w-5xl mx-auto hidden space-y-8">
+            <div class="flex flex-col sm:flex-row justify-between items-center bg-gray-900/60 p-6 rounded-2xl border border-gray-800 gap-4" style="background-color: rgba(17,24,39,0.8);">
+                <div>
+                    <h2 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">My Saved Games</h2>
+                    <p class="text-gray-400 text-sm">Import PGN files or review past matches analyzed by Stockfish.</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="openChessComModal()" class="px-5 py-2.5 rounded-xl border border-kastledGold text-kastledGold font-bold text-sm hover:bg-kastledGold/10 transition flex items-center gap-2">
+                        <span>+ Import Chess.com</span>
+                    </button>
+                    <button onclick="openImportModal()" class="px-5 py-2.5 rounded-xl bg-kastledGold text-kastledNavy font-bold text-sm hover:bg-kastledGoldHover transition flex items-center gap-2" style="background-color:#E5A93C; color:#0B132B;">
+                        <span>+ Import PGN</span>
+                    </button>
+                    <button onclick="logout()" class="px-4 py-2.5 rounded-xl border border-red-500/50 text-red-400 hover:bg-red-500/10 text-sm transition">Log Out</button>
+                </div>
+            </div>
+
+            <div class="bg-gray-900/40 rounded-2xl border border-gray-800 overflow-hidden" style="background-color: rgba(17,24,39,0.5);">
+                <div class="p-4 border-b border-gray-800 font-semibold text-gray-300 grid grid-cols-12 text-sm">
+                    <div class="col-span-5">Opponents / Event</div>
+                    <div class="col-span-3">Result / Date</div>
+                    <div class="col-span-2">Accuracy</div>
+                    <div class="col-span-2 text-right">Action</div>
+                </div>
+                <div id="games-list" class="divide-y divide-gray-800/60">
+                    <!-- Dynamic games list -->
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 3: GAME REVIEW SCREEN -->
+        <section id="view-review" class="w-full max-w-7xl mx-auto hidden grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-7 flex flex-col items-center justify-center space-y-4">
+                <div class="flex items-center space-x-4 w-full max-w-[460px] justify-between">
+                    <span id="review-opponent" class="text-sm font-semibold text-gray-300">Black: Opponent</span>
+                    <span id="eval-score" class="px-3 py-1 bg-gray-800 rounded-lg text-xs font-mono text-kastledGold" style="color:#E5A93C;">Eval: 0.0</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <!-- Eval Bar -->
+                    <div class="w-3 h-[360px] sm:h-[420px] bg-gray-700 rounded-full overflow-hidden flex flex-col justify-end">
+                        <div id="eval-bar-fill" class="w-full bg-kastledGold transition-all duration-300" style="height: 50%; background-color:#E5A93C;"></div>
+                    </div>
+                    <!-- Chess Board -->
+                    <div class="board-border w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
+                        <div id="review-board" class="chess-grid"></div>
+                    </div>
+                </div>
+                <span id="review-player" class="text-sm font-semibold text-gray-300">White: You</span>
+
+                <div class="flex items-center space-x-3">
+                    <button onclick="navigateMove(-1)" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold">◀ Prev</button>
+                    <button onclick="navigateMove(1)" class="px-4 py-2 bg-kastledGold text-kastledNavy hover:bg-kastledGoldHover rounded-lg text-sm font-bold" style="background-color:#E5A93C; color:#0B132B;">Next ▶</button>
+                    <button onclick="switchView('dashboard')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-400">Back to Games</button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-5 bg-gray-900/60 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between space-y-6" style="background-color: rgba(17,24,39,0.8);">
+                <div>
+                    <div class="flex justify-between items-center pb-4 border-b border-gray-800">
+                        <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Stockfish Analysis</h3>
+                        <span id="engine-status" class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-bold">Engine Ready</span>
+                    </div>
+
+                    <div id="move-review-details" class="mt-6 space-y-4">
+                        <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider">Current Position Evaluation</div>
+                            <div id="classification-text" class="text-lg font-bold text-white mt-1">Starting Position</div>
+                        </div>
+                        <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider">Stockfish Best Engine Move</div>
+                            <div id="best-move-text" class="text-sm font-mono text-kastledGold mt-1" style="color:#E5A93C;">Calculating...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Move Notation</div>
+                    <div id="moves-list-container" class="h-48 overflow-y-auto bg-gray-950/60 rounded-xl p-3 border border-gray-800 grid grid-cols-2 gap-2 text-sm font-mono">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: USER PROFILE SETTINGS -->
+        <section id="view-profile" class="w-full max-w-2xl mx-auto hidden space-y-6">
+            <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-8 space-y-6" style="background-color: rgba(17,24,39,0.8);">
+                <div class="flex justify-between items-center pb-4 border-b border-gray-800">
+                    <h2 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">User Profile & Settings</h2>
+                    <button onclick="switchView('dashboard')" class="text-sm text-gray-400 hover:text-white">✕ Back</button>
+                </div>
+
+                <div id="profile-message" class="text-xs hidden p-3 rounded-xl"></div>
+
+                <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Full Name</label>
+                        <input type="text" id="profile-name" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Email Address</label>
+                        <input type="email" id="profile-email" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Chess.com Alias</label>
+                        <input type="text" id="profile-chesscom" placeholder="e.g. username" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 uppercase mb-1">Lichess Alias</label>
+                        <input type="text" id="profile-lichess" placeholder="e.g. username" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                    </div>
+                    <button type="submit" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Save Changes</button>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODALS -->
+    <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 id="auth-modal-title" class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Log In / Sign Up</h3>
+            <div id="auth-error" class="text-xs text-red-400 hidden"></div>
+            <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div id="name-field-container">
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Full Name</label>
+                    <input type="text" id="auth-name" placeholder="John Doe" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Email Address</label>
+                    <input type="email" id="auth-email" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Password</label>
+                    <input type="password" id="auth-password" required class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;">
+                </div>
+                <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Continue</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- PGN IMPORT MODAL -->
+    <div id="import-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeImportModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import PGN Game</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Opponent / Match Title (Optional)</label>
+                    <input type="text" id="import-opponent-input" placeholder="e.g. Kasparov vs. Deep Blue (Auto-detected if in PGN)" class="w-full px-4 py-2.5 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold mb-3" style="background-color:#1F2937; color:white;">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 uppercase mb-1">Paste PGN Notation</label>
+                    <textarea id="import-pgn-input" rows="6" placeholder="1. e4 e5 2. Nf3 Nc6..." class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold" style="background-color:#1F2937; color:white;"></textarea>
+                </div>
+                <button onclick="saveImportedGame()" class="w-full py-3 rounded-xl bg-kastledGold text-kastledNavy font-bold hover:bg-kastledGoldHover transition" style="background-color:#E5A93C; color:#0B132B;">Import & Analyze</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHESS.COM IMPORT MODAL -->
+    <div id="chesscom-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 z-50" style="background-color: rgba(0,0,0,0.8);">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-xl w-full space-y-6 relative" style="background-color:#111827;">
+            <button onclick="closeChessComModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import from Chess.com</h3>
+            <div id="chesscom-content" class="space-y-4">
+                <p class="text-sm text-gray-300">Fetching your recent games...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Left Page Version Display -->
+    <div class="fixed bottom-3 left-4 text-xs font-mono text-gray-500 z-40 select-none">
+        v1.004
+    </div>
+
+    <!-- Cache-Busted Script File Link -->
+    <script src="./js/app.js?v=1.0.9"></script>
+</body>
+</html>
