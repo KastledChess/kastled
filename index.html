@@ -32,11 +32,11 @@
             border: 4px solid #E5A93C;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
         }
-        /* Strict square styling */
+        /* Strict square styling for uniform 8x8 grid */
         .chess-grid {
             display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            grid-template-rows: repeat(8, 1fr);
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            grid-template-rows: repeat(8, minmax(0, 1fr));
             width: 100%;
             height: 100%;
             aspect-ratio: 1 / 1;
@@ -47,12 +47,15 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
             overflow: hidden;
         }
         .piece-img {
-            max-width: 80%;
-            max-height: 80%;
+            width: 85%;
+            height: 85%;
             object-fit: contain;
+            display: block;
+            margin: auto;
             pointer-events: none;
         }
     </style>
@@ -62,8 +65,8 @@
     <!-- Header Navigation -->
     <header class="w-full px-6 py-4 flex items-center justify-between border-b border-gray-800">
         <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('landing')">
-            <img src="assets/Logo new.png" alt="Kastled Logo" class="h-10 w-auto object-contain" 
-                 onerror="this.onerror=null; this.src='assets/logo.png'; this.onerror=function(){this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 220 50\' fill=\'none\'><path d=\'M8 10h22v6H8zM11 16h16v8H11zM8 24h22v16H8z\' fill=\'%23E5A93C\'/><text x=\'42\' y=\'34\' font-family=\'sans-serif\' font-weight=\'bold\' font-size=\'26\' fill=\'%23E5A93C\' letter-spacing=\'2\'>KASTLED</text></svg>';}">
+            <img src="Assets/logo.png" alt="Kastled Logo" class="h-10 w-auto object-contain" 
+                 onerror="this.onerror=null; this.src='assets/logo.png';">
         </div>
         <nav class="hidden md:flex items-center space-x-8 text-gray-300">
             <a href="#" onclick="switchView('landing')" class="hover:text-kastledGold transition">Learn</a>
@@ -83,7 +86,7 @@
         <!-- VIEW 1: LANDING PAGE -->
         <section id="view-landing" class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center py-8">
             <div class="flex justify-center">
-                <div class="board-border rounded-lg p-2 bg-gray-900 w-[340px] h-[340px] sm:w-[420px] sm:h-[420px]">
+                <div class="board-border rounded-lg p-2 bg-gray-900 w-[360px] h-[360px] sm:w-[420px] sm:h-[420px]">
                     <div id="landing-board" class="chess-grid"></div>
                 </div>
             </div>
@@ -223,20 +226,20 @@
     </div>
 
     <script>
-        // Matching your short file names directly inside assets/
+        // Exact mapping matching Assets folder (Capital A, specific letter casing)
         const PIECE_IMAGES = {
-            'wP': 'assets/wP.png',
-            'wN': 'assets/wN.png',
-            'wB': 'assets/wB.png',
-            'wR': 'assets/wR.png',
-            'wQ': 'assets/wQ.png',
-            'wK': 'assets/wK.png',
-            'bP': 'assets/bP.png',
-            'bN': 'assets/bN.png',
-            'bB': 'assets/bB.png',
-            'bR': 'assets/bR.png',
-            'bQ': 'assets/bQ.png',
-            'bK': 'assets/bK.png'
+            'wP': 'Assets/wP.png',
+            'wN': 'Assets/wN.png',
+            'wB': 'Assets/wB.png',
+            'wR': 'Assets/wR.png',
+            'wQ': 'Assets/wQ.png',
+            'wK': 'Assets/wK.png',
+            'bP': 'Assets/bP.png',
+            'bN': 'Assets/bN.png',
+            'bB': 'Assets/bB.png',
+            'bR': 'Assets/bR.png',
+            'bQ': 'Assets/bQ.png',
+            'bK': 'Assets/bK.png'
         };
 
         const INITIAL_BOARD = [
