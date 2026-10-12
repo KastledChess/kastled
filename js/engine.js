@@ -61,7 +61,8 @@ export function initStockfish() {
 
             stockfishWorker.postMessage('uci');
             stockfishWorker.postMessage('isready');
-        });
+        })
+        .catch(err => console.warn("Stockfish worker init warning:", err));
 }
 
 function evaluateFenWithStockfish(moveUciString) {
@@ -71,7 +72,6 @@ function evaluateFenWithStockfish(moveUciString) {
         currentBatchEval = 0;
         currentBatchWorkerResolve = resolve;
 
-        // Safeguard timeout to ensure single worker promises never hang at 100%
         const timer = setTimeout(() => {
             if (currentBatchWorkerResolve) {
                 const resCall = currentBatchWorkerResolve;
@@ -111,7 +111,6 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
     let uciHistory = [];
     let tempGame = new Chess();
 
-    // 1. Single-Pass Engine Evaluation
     for (let i = 0; i < reviewHistory.length; i++) {
         const ply = i + 1;
         const moveObj = reviewHistory[i];
@@ -134,7 +133,6 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
         };
     }
 
-    // 2. Win% Delta Mapping
     let structuredAnalysis = [{ ply: 0, move: 'Start', eval: 0.0, cat: 3, code: 'Best', bestMove: '' }];
     let whiteScores = [], blackScores = [];
     const BOOK_PLY_DEPTH = 10;
@@ -189,7 +187,6 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     moveAnalysisData = structuredAnalysis;
 
-    // 3. Overall Accuracy and Ratings Calculation
     const avgWhiteAcc = whiteScores.length ? whiteScores.reduce((a, b) => a + b, 0) / whiteScores.length : 80.0;
     const avgBlackAcc = blackScores.length ? blackScores.reduce((a, b) => a + b, 0) / blackScores.length : 72.6;
 
@@ -215,4 +212,31 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     isBatchAnalyzing = false;
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+export function analyzeCurrentPosition(activeGame, currentReviewIndex) {
+    if (!activeGame || isBatchAnalyzing) return;
+    const statusEl = document.getElementById('engine-status');
+    
+    if (moveAnalysisData[currentReviewIndex]) {
+        if (statusEl) statusEl.innerText = 'Analysis Complete';
+        const currentData = moveAnalysisData[currentReviewIndex];
+        const evalScoreEl = document.getElementById('eval-score');
+        const classificationTextEl = document.getElementById('classification-text');
+        const bestMoveEl = document.getElementById('best-move-text');
+        
+        if (evalScoreEl && currentData.eval !== undefined) {
+            const formattedEval = currentData.eval > 0 ? `+${currentData.eval.toFixed(1)}` : currentData.eval.toFixed(1);
+            evalScoreEl.innerText = `Eval: ${formattedEval}`;
+        }
+        
+        if (classificationTextEl && currentData.cat) {
+            const meta = getClassificationMeta(currentData.cat);
+            classificationTextEl.innerHTML = `<span class="px-2.5 py-1 rounded-lg text-xs font-bold ${meta.colorClass} inline-flex items-center gap-1.5 mr-2"><span>${meta.badge}</span> ${meta.name}</span>`;
+        }
+
+        if (bestMoveEl) {
+            bestMoveEl.innerText = currentData.bestMove || 'N/A';
+        }
+    }
 }
