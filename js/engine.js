@@ -91,37 +91,58 @@ function evaluateFenWithStockfish(moveUciString) {
 }
 
 /**
- * LICHESS MASTERS OPENING EXPLORER API
- * Checks whether theplayed UCI move is part of established master theory.
+ * OPENING BOOK (Lichess chess-openings dataset - public domain, no API, no token)
+ * Loaded once from GitHub's raw CDN and cached for the rest of the session.
+ * Every opening line is stored along with all of its shortened versions, so
+ * "1. e4 e5 2. Nf3 Nc6" also registers "e4", "e4 e5" and "e4 e5 Nf3".
  */
-async function fetchLichessMasterBookMoves(playMovesArray) {
-    try {
-        const params = new URLSearchParams();
-        params.set('variant', 'standard');
-        params.set('moves', '12');
+const OPENING_BOOK_FILES = ['a', 'b', 'c', 'd', 'e'].map(
+    letter => `https://raw.githubusercontent.com/lichess-org/chess-openings/master/${letter}.tsv`
+);
 
-        if (playMovesArray && playMovesArray.length > 0) {
-            params.set('play', playMovesArray.join(','));
+let openingBookPromise = null;
+
+function loadOpeningBook() {
+    if (openingBookPromise) return openingBookPromise;
+
+    openingBookPromise = (async () => {
+        const bookSet = new Set();
+        try {
+            const texts = await Promise.all(
+                OPENING_BOOK_FILES.map(url =>
+                    fetch(url).then(r => (r.ok ? r.text() : ''))
+                )
+            );
+
+            for (const text of texts) {
+                for (const line of text.split('\n')) {
+                    const parts = line.split('\t');
+                    if (parts.length < 3 || parts[0].trim() === 'eco') continue;
+
+                    // "1. e4 e5 2. Nf3 Nc6" -> ["e4","e5","Nf3","Nc6"]
+                    const sans = parts[2]
+                        .replace(/\d+\.(\.\.)?/g, ' ')
+                        .trim()
+                        .split(/\s+/)
+                        .filter(Boolean);
+
+                    for (let i = 1; i <= sans.length; i++) {
+                        bookSet.add(sans.slice(0, i).join(' '));
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Opening book failed to load:', err);
         }
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        if (bookSet.size === 0) {
+            console.warn('Opening book is empty - Book moves will not be detected.');
+            openingBookPromise = null; // allow a retry on the next analysis
+        }
+        return bookSet;
+    })();
 
-        const response = await fetch(`https://explorer.lichess.ovh/masters?${params.toString()}`, {
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) return [];
-
-        const data = await response.json();
-        if (!data || !Array.isArray(data.moves)) return [];
-
-        // Return list of candidate master UCI move strings
-        return data.moves.map(m => m.uci.toLowerCase());
-    } catch (err) {
-        return [];
-    }
+    return openingBookPromise;
 }
 
 function evalToWinProb(cp) {
@@ -150,42 +171,39 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
     const progressBar = document.getElementById('analysis-progress-bar');
 
     let uciHistory = [];
+    let sanHistory = [];
     let tempGame = new Chess();
-    
-    // Construct full UCI move history array
+
+    // Construct full UCI and SAN move history arrays
     for (let i = 0; i < reviewHistory.length; i++) {
         const m = tempGame.move(reviewHistory[i]);
         if (m) {
             uciHistory.push(m.from + m.to + (m.promotion || ''));
+            sanHistory.push(m.san);
         }
     }
 
-    // PHASE 1: PRE-CHECK OPENING BOOK WITH LICHESS API
+    // PHASE 1: CHECK OPENING BOOK
     let bookMask = new Array(reviewHistory.length).fill(false);
-    let inBook = true;
 
-    if (progressText) progressText.innerText = "Checking Opening Theory against Lichess Masters Database...";
+    if (progressText) progressText.innerText = "Checking Opening Theory...";
     if (progressBar) progressBar.style.width = "10%";
 
-    const MAX_BOOK_PLY = 20; // Check up to first 10 moves per player
-    for (let ply = 1; ply <= Math.min(reviewHistory.length, MAX_BOOK_PLY); ply++) {
-        if (!inBook) break;
+    const bookSet = await loadOpeningBook();
 
-        const previousMoves = uciHistory.slice(0, ply - 1);
-        const playedUci = uciHistory[ply - 1];
-
-        const validBookMoves = await fetchLichessMasterBookMoves(previousMoves);
-
-        if (validBookMoves.includes(playedUci.toLowerCase())) {
+    // A move is Book only while the game so far is still inside a known opening line
+    for (let ply = 1; ply <= sanHistory.length; ply++) {
+        const lineSoFar = sanHistory.slice(0, ply).join(' ');
+        if (bookSet.has(lineSoFar)) {
             bookMask[ply - 1] = true;
         } else {
-            inBook = false; // Player diverged from Master Theory; stop querying API
+            break; // Left opening theory; stop checking
         }
     }
 
     // PHASE 2: STOCKFISH ENGINE ANALYSIS
     let evalHistory = [{ evalCp: 0, winProb: 0.5, bestMove: '' }];
-    
+
     for (let i = 0; i < reviewHistory.length; i++) {
         const ply = i + 1;
 
@@ -195,7 +213,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
         const movesSoFar = uciHistory.slice(0, ply).join(' ');
         const evalRes = await evaluateFenWithStockfish(movesSoFar);
-        
+
         const isWhite = (ply % 2 === 1);
         let whiteCp = isWhite ? -evalRes.evalCp : evalRes.evalCp;
 
@@ -206,7 +224,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
         };
     }
 
-    // PHASE 3: MAP FINAL TIERS & SAVE TO SUPABASE
+    // PHASE 3: MAP FINAL CATEGORIES & SAVE TO SUPABASE
     let structuredAnalysis = [{ ply: 0, move: 'Start', eval: 0.0, cat: 3, code: 'Best', bestMove: '' }];
     let whiteScores = [];
     let blackScores = [];
@@ -217,16 +235,15 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
         const prevEval = evalHistory[ply - 1];
         const currEval = evalHistory[ply];
 
-        const winLossPct = isWhite 
-            ? (prevEval.winProb - currEval.winProb) 
+        const winLossPct = isWhite
+            ? (prevEval.winProb - currEval.winProb)
             : (currEval.winProb - prevEval.winProb);
 
         let catCode = 3;
         let scoreValue = 100;
 
-        // Check if identified as Book in Phase 1
         if (bookMask[ply - 1]) {
-            catCode = 6; // Book 📖
+            catCode = 6; // Book
             scoreValue = 100;
         } else if (moveObj.san && moveObj.san.includes('#')) {
             catCode = 3;
@@ -307,19 +324,19 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 export function analyzeCurrentPosition(activeGame, currentReviewIndex) {
     if (!activeGame || isBatchAnalyzing) return;
     const statusEl = document.getElementById('engine-status');
-    
+
     if (moveAnalysisData[currentReviewIndex]) {
         if (statusEl) statusEl.innerText = 'Analysis Complete';
         const currentData = moveAnalysisData[currentReviewIndex];
         const evalScoreEl = document.getElementById('eval-score');
         const classificationTextEl = document.getElementById('classification-text');
         const bestMoveEl = document.getElementById('best-move-text');
-        
+
         if (evalScoreEl && currentData.eval !== undefined) {
             const formattedEval = currentData.eval > 0 ? `+${currentData.eval.toFixed(1)}` : currentData.eval.toFixed(1);
             evalScoreEl.innerText = `Eval: ${formattedEval}`;
         }
-        
+
         if (classificationTextEl && currentData.cat) {
             const meta = getClassificationMeta(currentData.cat);
             classificationTextEl.innerHTML = `<span class="px-2.5 py-1 rounded-lg text-xs font-bold ${meta.colorClass} inline-flex items-center gap-1.5 mr-2"><span>${meta.badge}</span> ${meta.name}</span>`;
