@@ -43,9 +43,7 @@
             <a href="#" onclick="checkAuthAndSwitch('review')" class="hover:text-kastledGold transition">Review</a>
             <a href="#" onclick="checkAuthAndSwitch('profile')" class="hover:text-kastledGold transition">Profile</a>
         </nav>
-        <div id="auth-nav-container" class="flex items-center space-x-4">
-            <!-- Dynamically populated -->
-        </div>
+        <div id="auth-nav-container" class="flex items-center space-x-4"></div>
     </header>
 
     <!-- Main Container -->
@@ -99,18 +97,15 @@
                     <div class="col-span-2">Accuracy</div>
                     <div class="col-span-2 text-right">Action</div>
                 </div>
-                <div id="games-list" class="divide-y divide-gray-800/60">
-                    <!-- Dynamic games list -->
-                </div>
+                <div id="games-list" class="divide-y divide-gray-800/60"></div>
             </div>
         </section>
 
-        <!-- VIEW 3: GAME REVIEW SCREEN -->
+        <!-- VIEW 3: GAME REVIEW SCREEN (UPDATED LAYOUT WITH HORIZONTAL SCROLL RIBBON) -->
         <section id="view-review" class="w-full max-w-7xl mx-auto hidden flex flex-col space-y-6">
             
             <!-- GAME PERFORMANCE SUMMARY BAR -->
             <div class="w-full bg-gray-900/80 border border-gray-800 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 divide-y md:divide-y-0 md:divide-x divide-gray-800">
-                <!-- White Player Stats -->
                 <div class="flex items-center justify-around pr-2">
                     <div>
                         <div id="white-player-label" class="text-xs text-gray-400 uppercase tracking-wider font-semibold">White</div>
@@ -122,7 +117,6 @@
                     </div>
                 </div>
 
-                <!-- Black Player Stats -->
                 <div class="flex items-center justify-around pl-2 pt-2 md:pt-0">
                     <div>
                         <div id="black-player-label" class="text-xs text-gray-400 uppercase tracking-wider font-semibold">Black</div>
@@ -135,12 +129,14 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <!-- Board & Navigation Column -->
                 <div class="lg:col-span-7 flex flex-col items-center justify-center space-y-4">
                     <div class="flex items-center space-x-4 w-full max-w-[460px] justify-between">
                         <span id="review-opponent" class="text-sm font-semibold text-gray-300">Black: Opponent</span>
                         <span id="eval-score" class="px-3 py-1 bg-gray-800 rounded-lg text-xs font-mono text-kastledGold" style="color:#E5A93C;">Eval: 0.0</span>
                     </div>
+                    
                     <div class="flex items-center gap-3">
                         <!-- Eval Bar -->
                         <div class="w-3 h-[360px] sm:h-[420px] bg-gray-700 rounded-full overflow-hidden flex flex-col justify-end">
@@ -151,37 +147,43 @@
                             <div id="review-board" class="chess-grid"></div>
                         </div>
                     </div>
+                    
                     <span id="review-player" class="text-sm font-semibold text-gray-300">White: You</span>
 
-                    <div class="flex items-center space-x-3">
-                        <button onclick="navigateMove(-1)" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold">◀ Prev</button>
-                        <button onclick="navigateMove(1)" class="px-4 py-2 bg-kastledGold text-kastledNavy hover:bg-kastledGoldHover rounded-lg text-sm font-bold" style="background-color:#E5A93C; color:#0B132B;">Next ▶</button>
-                        <button onclick="switchView('dashboard')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-400">Back to Games</button>
+                    <!-- Nav Buttons -->
+                    <div class="flex items-center space-x-3 pt-2">
+                        <button onclick="navigateMove(-1)" class="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl text-sm font-bold flex items-center gap-1">
+                            <span>◀</span> Prev
+                        </button>
+                        <button onclick="navigateMove(1)" class="px-6 py-2.5 bg-kastledGold text-kastledNavy hover:bg-kastledGoldHover rounded-xl text-sm font-bold shadow-lg" style="background-color:#E5A93C; color:#0B132B;">
+                            Next <span>▶</span>
+                        </button>
+                        <button onclick="switchView('dashboard')" class="px-4 py-2.5 bg-gray-800/80 hover:bg-gray-700 rounded-xl text-sm text-gray-400">Back to Games</button>
+                    </div>
+
+                    <!-- CHESSIGMA-STYLE HORIZONTAL MOVES RIBBON -->
+                    <div class="w-full max-w-[480px] bg-gray-950/80 border border-gray-800 rounded-2xl p-2 mt-2">
+                        <div id="moves-list-container" class="flex items-center gap-2 overflow-x-auto py-1 px-2 no-scrollbar">
+                            <!-- Dynamic colorful horizontal move pills -->
+                        </div>
                     </div>
                 </div>
 
-                <div class="lg:col-span-5 bg-gray-900/60 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between space-y-6" style="background-color: rgba(17,24,39,0.8);">
-                    <div>
-                        <div class="flex justify-between items-center pb-4 border-b border-gray-800">
-                            <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Stockfish Analysis</h3>
-                            <span id="engine-status" class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-bold">Engine Ready</span>
-                        </div>
-
-                        <div id="move-review-details" class="mt-6 space-y-4">
-                            <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
-                                <div class="text-xs text-gray-400 uppercase tracking-wider">Current Position Evaluation</div>
-                                <div id="classification-text" class="text-lg font-bold text-white mt-1">Starting Position</div>
-                            </div>
-                            <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
-                                <div class="text-xs text-gray-400 uppercase tracking-wider">Stockfish Best Engine Move</div>
-                                <div id="best-move-text" class="text-sm font-mono text-kastledGold mt-1" style="color:#E5A93C;">Calculating...</div>
-                            </div>
-                        </div>
+                <!-- Analysis Details Column -->
+                <div class="lg:col-span-5 bg-gray-900/60 border border-gray-800 rounded-2xl p-6 flex flex-col space-y-6" style="background-color: rgba(17,24,39,0.8);">
+                    <div class="flex justify-between items-center pb-4 border-b border-gray-800">
+                        <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Stockfish Analysis</h3>
+                        <span id="engine-status" class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-bold">Engine Ready</span>
                     </div>
 
-                    <div>
-                        <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Move Notation</div>
-                        <div id="moves-list-container" class="h-48 overflow-y-auto bg-gray-950/60 rounded-xl p-3 border border-gray-800 grid grid-cols-2 gap-2 text-sm font-mono">
+                    <div id="move-review-details" class="space-y-4">
+                        <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider">Current Position Evaluation</div>
+                            <div id="classification-text" class="text-lg font-bold text-white mt-1">Starting Position</div>
+                        </div>
+                        <div class="p-4 rounded-xl bg-gray-800/50 border border-gray-700/50">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider">Stockfish Recommended Engine Move</div>
+                            <div id="best-move-text" class="text-sm font-mono text-kastledGold mt-1" style="color:#E5A93C;">Calculating...</div>
                         </div>
                     </div>
                 </div>
@@ -254,7 +256,7 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-xs text-gray-400 uppercase mb-1">Opponent / Match Title (Optional)</label>
-                    <input type="text" id="import-opponent-input" placeholder="e.g. Kasparov vs. Deep Blue (Auto-detected if in PGN)" class="w-full px-4 py-2.5 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold mb-3" style="background-color:#1F2937; color:white;">
+                    <input type="text" id="import-opponent-input" placeholder="e.g. Kasparov vs. Deep Blue" class="w-full px-4 py-2.5 rounded-xl bg-gray-800 border border-gray-700 text-white font-mono text-sm focus:outline-none focus:border-kastledGold mb-3" style="background-color:#1F2937; color:white;">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-400 uppercase mb-1">Paste PGN Notation</label>
@@ -271,7 +273,7 @@
             <button onclick="closeChessComModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
             <h3 class="text-2xl font-bold text-kastledGold" style="color:#E5A93C;">Import from Chess.com</h3>
             <div id="chesscom-content" class="space-y-4">
-                <p class="text-sm text-gray-300">Fetching your recent games...</p>
+                <p class="text-sm text-gray-300">Fetching recent games...</p>
             </div>
         </div>
     </div>
@@ -284,7 +286,6 @@
                 <h3 class="text-xl font-bold text-kastledGold" style="color:#E5A93C;">Analyzing Game with Stockfish</h3>
                 <p id="analysis-progress-text" class="text-sm text-gray-400 mt-2">Evaluating move 1 of 0...</p>
             </div>
-            <!-- Progress Bar -->
             <div class="w-full bg-gray-800 h-3 rounded-full overflow-hidden border border-gray-700">
                 <div id="analysis-progress-bar" class="bg-kastledGold h-full transition-all duration-300" style="width: 0%; background-color:#E5A93C;"></div>
             </div>
@@ -292,12 +293,11 @@
         </div>
     </div>
 
-    <!-- Bottom Left Page Version Display -->
+    <!-- Page Version Display -->
     <div class="fixed bottom-3 left-4 text-xs font-mono text-kastledGold z-40 select-none bg-black/50 px-2 py-1 rounded border border-gray-800" style="color:#E5A93C;">
         v1.027
     </div>
 
-    <!-- Script File Link (ES6 Modular Entry Point) -->
     <script type="module" src="./js/app.js"></script>
 </body>
 </html>
