@@ -1,5 +1,5 @@
 import { supabaseClient } from './config.js';
-import { initStockfish, runFullGameAnalysis, analyzeCurrentPosition, getMoveAnalysisData, setCurrentActiveGameRecord, getClassificationMeta } from './engine.js';
+import { initStockfish, runFullGameAnalysis, analyzeCurrentPosition, getMoveAnalysisData, setMoveAnalysisData, setCurrentActiveGameRecord, getClassificationMeta } from './engine.js';
 import { checkAuthSession, loadProfileData, handleProfileUpdate, fetchGamesFromDatabase } from './supabase-service.js';
 import { renderRawBoard, updateAuthHeader, updateEvalUI, parsePgnHeader } from './ui.js';
 
@@ -78,7 +78,6 @@ window.closeAuthModal = function() {
     }
 };
 
-// --- FIXED AUTH SUBMIT HANDLER ---
 window.handleAuthSubmit = async function(event) {
     event.preventDefault();
     
@@ -155,7 +154,6 @@ window.closeImportModal = function() {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
 
-// --- RESTORED CHESS.COM IMPORT WORKFLOW ---
 window.openChessComModal = async function() {
     if (!currentUser) return alert('You must be logged in.');
 
@@ -439,12 +437,9 @@ async function openGameReview(game) {
     if (wLabelEl) wLabelEl.innerText = `White (${whiteName})`;
     if (bLabelEl) bLabelEl.innerText = `Black (${blackName})`;
 
-    // If game has stored analysis JSONB, load it directly; otherwise run analysis
-    if (game.analysis_data && Array.isArray(game.analysis_data)) {
-        import('./engine.js').then(engine => {
-            engine.setMoveAnalysisData(game.analysis_data);
-        });
-    } else if (!game.is_reviewed || game.accuracy === 'Pending') {
+    if (game.analysis_data && Array.isArray(game.analysis_data) && game.analysis_data.length > 0) {
+        setMoveAnalysisData(game.analysis_data);
+    } else {
         await runFullGameAnalysis(activeGame, reviewHistory);
     }
 
@@ -492,40 +487,32 @@ function updateReviewUI() {
     analyzeCurrentPosition(activeGame, currentReviewIndex);
 }
 
+// Renders modern Chessigma-style horizontal scroll ribbon with colorful badges
 function renderMovesList() {
     const container = document.getElementById('moves-list-container');
     if (!container) return;
     container.innerHTML = '';
+    
     const moveAnalysisData = getMoveAnalysisData();
-
     let activeMoveElement = null;
 
     reviewHistory.forEach((move, idx) => {
-        const moveNum = Math.floor(idx / 2) + 1;
-        const isWhite = idx % 2 === 0;
-        
-        if (isWhite) {
-            const labelSpan = document.createElement('div');
-            labelSpan.className = "text-gray-500 font-mono text-xs col-span-2 pt-1";
-            labelSpan.innerText = `${moveNum}.`;
-            container.appendChild(labelSpan);
-        }
-
         const moveBtn = document.createElement('div');
         const isCurrent = currentReviewIndex === idx + 1;
-        const analysis = moveAnalysisData[idx + 1];
         
-        // Map 1-10 category code to correct badge using getClassificationMeta
-        let badgeSymbol = '';
-        if (analysis && analysis.cat) {
-            const meta = getClassificationMeta(analysis.cat);
-            badgeSymbol = meta.badge;
-        }
+        const analysis = moveAnalysisData[idx + 1] || {};
+        const catCode = analysis.cat !== undefined ? analysis.cat : 3; 
+        const meta = getClassificationMeta(catCode);
         
-        moveBtn.className = `p-1.5 rounded cursor-pointer text-xs font-mono transition flex justify-between items-center ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold' : 'bg-gray-900 hover:bg-gray-800 text-gray-300'}`;
+        moveBtn.className = `flex-shrink-0 px-3 py-1.5 rounded-xl cursor-pointer text-xs font-mono transition flex items-center gap-1.5 border ${isCurrent ? 'bg-kastledGold text-kastledNavy font-bold border-kastledGold shadow-md' : 'bg-gray-900 border-gray-800 hover:bg-gray-800 text-gray-200'}`;
         if (isCurrent) moveBtn.style = 'background-color:#E5A93C; color:#0B132B;';
         
-        moveBtn.innerHTML = `<span>${move.san}</span><span class="text-xs ml-1">${badgeSymbol}</span>`;
+        moveBtn.innerHTML = `
+            <span>${move.san}</span>
+            <span class="w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold text-white" style="background-color: ${meta.iconBg}">
+                ${meta.badge}
+            </span>
+        `;
         moveBtn.onclick = () => jumpToMove(idx + 1);
         container.appendChild(moveBtn);
 
@@ -535,7 +522,7 @@ function renderMovesList() {
     });
 
     if (activeMoveElement) {
-        activeMoveElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        activeMoveElement.scrollIntoView({ block: 'nearest', behavior: 'smooth', inline: 'center' });
     }
 }
 
