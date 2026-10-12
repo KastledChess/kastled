@@ -383,6 +383,30 @@ window.saveImportedGame = async function() {
     });
 };
 
+// DELETE GAME FUNCTION
+window.deleteGame = async function(event, gameId) {
+    event.stopPropagation(); // Prevents opening the game review on click
+    
+    if (!confirm('Are you sure you want to delete this game?')) return;
+
+    if (supabaseClient) {
+        const { error } = await supabaseClient
+            .from('games')
+            .delete()
+            .eq('id', gameId);
+
+        if (error) {
+            console.error('Error deleting game:', error);
+            alert('Could not delete game.');
+        } else {
+            fetchGamesFromDatabase(currentUser, (data) => {
+                savedGames = data;
+                renderGamesList();
+            });
+        }
+    }
+};
+
 function renderGamesList() {
     const container = document.getElementById('games-list');
     if (!container) return;
@@ -404,10 +428,13 @@ function renderGamesList() {
         }
 
         row.innerHTML = `
-            <div class="col-span-5 font-semibold text-white">${game.opponent}</div>
+            <div class="col-span-4 font-semibold text-white">${game.opponent}</div>
             <div class="col-span-3 text-gray-400">${game.result} <span class="text-xs block text-gray-500">${game.date}</span></div>
             <div class="col-span-2 text-kastledGold font-bold text-xs" style="color:#E5A93C;">${accDisplay}</div>
-            <div class="col-span-2 text-right"><span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span></div>
+            <div class="col-span-3 text-right flex items-center justify-end gap-2">
+                <span class="px-3 py-1 bg-kastledGold/10 text-kastledGold rounded-lg text-xs font-bold" style="color:#E5A93C;">Review</span>
+                <button onclick="window.deleteGame(event, '${game.id}')" class="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-bold transition">Delete</button>
+            </div>
         `;
         container.appendChild(row);
     });
@@ -487,7 +514,6 @@ function updateReviewUI() {
     analyzeCurrentPosition(activeGame, currentReviewIndex);
 }
 
-// Renders modern Chessigma-style horizontal scroll ribbon with colorful badges
 function renderMovesList() {
     const container = document.getElementById('moves-list-container');
     if (!container) return;
