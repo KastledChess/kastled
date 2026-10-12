@@ -11,20 +11,20 @@ let getActiveGame = null;
 let getCurrentReviewIndex = null;
 let updateEvalUICallback = null;
 
-// 10-Category Lookup Master
+// 10-Category Definitions with Vibrant Badge Styling
 export function getClassificationMeta(catCode) {
     switch(parseInt(catCode, 10)) {
-        case 1:  return { name: 'Brilliant', badge: '‼', class: 'bg-teal-500 text-white' };
-        case 2:  return { name: 'Great', badge: '!', class: 'bg-blue-500 text-white' };
-        case 3:  return { name: 'Best', badge: '⭐', class: 'bg-lime-500 text-white' };
-        case 4:  return { name: 'Excellent', badge: '👍', class: 'bg-emerald-600 text-white' };
-        case 5:  return { name: 'Good', badge: '✔', class: 'bg-slate-500 text-white' };
-        case 6:  return { name: 'Book', badge: '📖', class: 'bg-amber-700 text-white' };
-        case 7:  return { name: 'Inaccuracy', badge: '?!', class: 'bg-yellow-500 text-white' };
-        case 8:  return { name: 'Mistake', badge: '?', class: 'bg-orange-500 text-white' };
-        case 9:  return { name: 'Miss', badge: '✕', class: 'bg-rose-500 text-white' };
-        case 10: return { name: 'Blunder', badge: '??', class: 'bg-red-600 text-white' };
-        default: return { name: 'Best', badge: '⭐', class: 'bg-lime-500 text-white' };
+        case 1:  return { name: 'Brilliant', badge: '‼', colorClass: 'bg-teal-500 text-white', iconBg: '#0D9488' };
+        case 2:  return { name: 'Great', badge: '!', colorClass: 'bg-blue-500 text-white', iconBg: '#2563EB' };
+        case 3:  return { name: 'Best', badge: '⭐', colorClass: 'bg-emerald-500 text-white', iconBg: '#10B981' };
+        case 4:  return { name: 'Excellent', badge: '👍', colorClass: 'bg-lime-600 text-white', iconBg: '#65A30D' };
+        case 5:  return { name: 'Good', badge: '✔', colorClass: 'bg-slate-600 text-white', iconBg: '#475569' };
+        case 6:  return { name: 'Book', badge: '📖', colorClass: 'bg-amber-700 text-white', iconBg: '#B45309' };
+        case 7:  return { name: 'Inaccuracy', badge: '?!', colorClass: 'bg-yellow-500 text-black', iconBg: '#EAB308' };
+        case 8:  return { name: 'Mistake', badge: '?', colorClass: 'bg-orange-500 text-white', iconBg: '#F97316' };
+        case 9:  return { name: 'Miss', badge: '✕', colorClass: 'bg-rose-500 text-white', iconBg: '#F43F5E' };
+        case 10: return { name: 'Blunder', badge: '??', colorClass: 'bg-red-600 text-white', iconBg: '#DC2626' };
+        default: return { name: 'Best', badge: '⭐', colorClass: 'bg-emerald-500 text-white', iconBg: '#10B981' };
     }
 }
 
@@ -73,17 +73,20 @@ export function initStockfish(activeGameRef, currentReviewIndexRef, evalCallback
                 }
 
                 if (line.includes('bestmove')) {
+                    const match = line.match(/bestmove\s+(\w+)/);
+                    let bestFound = match && match[1] ? match[1] : '';
+                    
                     if (isBatchAnalyzing) {
+                        if (moveAnalysisData[batchAnalysisIndex]) {
+                            moveAnalysisData[batchAnalysisIndex].bestMove = bestFound;
+                        }
                         if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
                         advanceBatchAnalysis();
                     } else {
-                        const match = line.match(/bestmove\s+(\w+)/);
-                        if (match && match[1]) {
-                            const bestMoveEl = document.getElementById('best-move-text');
-                            const statusEl = document.getElementById('engine-status');
-                            if (bestMoveEl) bestMoveEl.innerText = match[1];
-                            if (statusEl) statusEl.innerText = 'Analysis Complete';
-                        }
+                        const bestMoveEl = document.getElementById('best-move-text');
+                        const statusEl = document.getElementById('engine-status');
+                        if (bestMoveEl) bestMoveEl.innerText = bestFound || 'Analysis Complete';
+                        if (statusEl) statusEl.innerText = 'Analysis Complete';
                     }
                 }
             };
@@ -127,7 +130,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
 
     currentBatchGame.reset();
     moveAnalysisData = [];
-    moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, cat: 3 };
+    moveAnalysisData[0] = { eval: 0.0, winProb: 0.5, cat: 3, bestMove: '' };
 
     return new Promise((resolve) => {
         batchResolveCallback = resolve;
@@ -153,16 +156,19 @@ function analyzeNextBatchMove() {
     if (progressBar) progressBar.style.width = `${pct}%`;
 
     batchAnalysisIndex++;
+    
+    // Construct sequential move string for Stockfish
+    let moveUcis = [];
     currentBatchGame.reset();
     for (let i = 0; i < batchAnalysisIndex; i++) {
-        currentBatchGame.move(currentBatchHistory[i]);
+        const m = currentBatchGame.move(currentBatchHistory[i]);
+        if (m) moveUcis.push(m.from + m.to + (m.promotion || ''));
     }
 
     if (stockfishWorker) {
-        const fen = currentBatchGame.fen();
         stockfishWorker.postMessage('stop');
-        stockfishWorker.postMessage(`position fen ${fen}`);
-        stockfishWorker.postMessage('go depth 10');
+        stockfishWorker.postMessage(`position startpos moves ${moveUcis.join(' ')}`);
+        stockfishWorker.postMessage('go depth 12');
 
         if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
         batchTimeoutTimer = setTimeout(() => {
@@ -171,7 +177,7 @@ function analyzeNextBatchMove() {
                 storeMoveEvalOnly(batchAnalysisIndex, prevEval);
                 advanceBatchAnalysis();
             }
-        }, 350);
+        }, 400);
     } else {
         setTimeout(() => {
             const prevEval = moveAnalysisData[batchAnalysisIndex - 1] ? moveAnalysisData[batchAnalysisIndex - 1].eval : 0.0;
@@ -197,7 +203,6 @@ function parsePgnHeader(pgnText, tag) {
     return match ? match[1] : null;
 }
 
-// FULL 10-CATEGORY CLASSIFICATION ENGINE
 function onAnalysisComplete() {
     isBatchAnalyzing = false;
     if (batchTimeoutTimer) clearTimeout(batchTimeoutTimer);
@@ -220,58 +225,41 @@ function onAnalysisComplete() {
 
         const isWhite = (i % 2 === 1);
         const winLossPct = isWhite ? (prev.winProb - curr.winProb) : (curr.winProb - prev.winProb);
-        const opponentPrevWinLoss = isWhite ? (moveAnalysisData[i - 2]?.winProb - prev.winProb) : (prev.winProb - moveAnalysisData[i - 2]?.winProb);
+        const opponentPrevWinLoss = isWhite 
+            ? ((moveAnalysisData[i - 2]?.winProb || 0.5) - prev.winProb) 
+            : (prev.winProb - (moveAnalysisData[i - 2]?.winProb || 0.5));
 
         let catCode = 3; // Default Best (⭐)
         let scoreValue = 100;
 
-        // 1. BOOK MOVE CHECK (Opening moves 1-5)
-        if (i <= 10 && winLossPct >= -0.01) {
+        if (i <= 8 && winLossPct >= -0.02) {
             catCode = 6; // Book (📖)
             scoreValue = 100;
-        }
-        // 2. BLUNDER CHECK
-        else if (winLossPct > 0.20) {
+        } else if (winLossPct > 0.22) {
             catCode = 10; // Blunder (??)
             scoreValue = 0;
-        }
-        // 3. MISS CHECK (Opponent blundered on previous move, but player failed to punish it)
-        else if (opponentPrevWinLoss > 0.15 && winLossPct > 0.08) {
+        } else if (opponentPrevWinLoss > 0.15 && winLossPct > 0.08) {
             catCode = 9; // Miss (✕)
             scoreValue = 20;
-        }
-        // 4. MISTAKE CHECK
-        else if (winLossPct > 0.12) {
+        } else if (winLossPct > 0.12) {
             catCode = 8; // Mistake (?)
             scoreValue = 25;
-        }
-        // 5. INACCURACY CHECK
-        else if (winLossPct > 0.06) {
+        } else if (winLossPct > 0.05) {
             catCode = 7; // Inaccuracy (?!)
             scoreValue = 50;
-        }
-        // 6. GOOD MOVE CHECK
-        else if (winLossPct > 0.02) {
+        } else if (winLossPct > 0.01) {
             catCode = 5; // Good (✔)
             scoreValue = 75;
-        }
-        // 7. EXCELLENT MOVE CHECK
-        else if (winLossPct > 0.00) {
+        } else if (winLossPct > -0.01) {
             catCode = 4; // Excellent (👍)
             scoreValue = 90;
-        }
-        // 8. BRILLIANT MOVE CHECK (Piece captured/sacrificed while maintaining winning eval)
-        else if (moveObj && (moveObj.flags.includes('c') || moveObj.captured) && winLossPct <= -0.02) {
+        } else if (moveObj && (moveObj.flags.includes('c') || moveObj.captured) && winLossPct <= -0.02) {
             catCode = 1; // Brilliant (‼)
             scoreValue = 100;
-        }
-        // 9. GREAT MOVE CHECK (Significant positive win % shift)
-        else if (winLossPct <= -0.04) {
+        } else if (winLossPct <= -0.03) {
             catCode = 2; // Great (!)
             scoreValue = 100;
-        }
-        // 10. BEST MOVE DEFAULT
-        else {
+        } else {
             catCode = 3; // Best (⭐)
             scoreValue = 100;
         }
@@ -285,7 +273,7 @@ function onAnalysisComplete() {
             eval: curr.eval,
             cat: catCode,
             code: meta.name,
-            bestMove: ''
+            bestMove: curr.bestMove || ''
         };
 
         if (isWhite) whiteScores.push(scoreValue);
@@ -377,6 +365,7 @@ export function analyzeCurrentPosition(activeGame, currentReviewIndex) {
         const currentData = moveAnalysisData[currentReviewIndex];
         const evalScoreEl = document.getElementById('eval-score');
         const classificationTextEl = document.getElementById('classification-text');
+        const bestMoveEl = document.getElementById('best-move-text');
         
         if (evalScoreEl && currentData.eval !== undefined) {
             const formattedEval = currentData.eval > 0 ? `+${currentData.eval.toFixed(1)}` : currentData.eval.toFixed(1);
@@ -385,7 +374,11 @@ export function analyzeCurrentPosition(activeGame, currentReviewIndex) {
         
         if (classificationTextEl && currentData.cat) {
             const meta = getClassificationMeta(currentData.cat);
-            classificationTextEl.innerText = `${meta.badge} ${meta.name}`;
+            classificationTextEl.innerHTML = `<span class="px-2.5 py-1 rounded-lg text-xs font-bold ${meta.colorClass} inline-flex items-center gap-1.5 mr-2"><span>${meta.badge}</span> ${meta.name}</span>`;
+        }
+
+        if (bestMoveEl) {
+            bestMoveEl.innerText = currentData.bestMove || 'N/A';
         }
         return;
     }
