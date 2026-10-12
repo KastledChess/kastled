@@ -36,31 +36,26 @@ export function initStockfish() {
 
                 if (line.includes('score cp') || line.includes('score mate')) {
                     let cp = 0;
-
                     if (line.includes('score cp')) {
                         const match = line.match(/score cp (-?\d+)/);
                         if (match) cp = parseInt(match[1], 10);
                     } else if (line.includes('score mate')) {
                         const match = line.match(/score mate (-?\d+)/);
-
                         if (match) {
                             const m = parseInt(match[1], 10);
                             cp = m > 0 ? (10000 - m * 100) : (-10000 - m * 100);
                         }
                     }
-
                     currentBatchEval = cp;
                 }
 
                 if (line.includes('bestmove')) {
                     const match = line.match(/bestmove\s+(\w+)/);
-
                     if (currentBatchWorkerResolve) {
                         const res = {
                             evalCp: currentBatchEval,
                             bestMove: match ? match[1] : ''
                         };
-
                         const resolve = currentBatchWorkerResolve;
                         currentBatchWorkerResolve = null;
                         resolve(res);
@@ -76,9 +71,7 @@ export function initStockfish() {
 
 function evaluateFenWithStockfish(moveUciString) {
     return new Promise((resolve) => {
-        if (!stockfishWorker) {
-            return resolve({ evalCp: 0, bestMove: '' });
-        }
+        if (!stockfishWorker) return resolve({ evalCp: 0, bestMove: '' });
 
         currentBatchEval = 0;
         currentBatchWorkerResolve = resolve;
@@ -87,13 +80,9 @@ function evaluateFenWithStockfish(moveUciString) {
             if (currentBatchWorkerResolve) {
                 const resCall = currentBatchWorkerResolve;
                 currentBatchWorkerResolve = null;
-
-                resCall({
-                    evalCp: currentBatchEval,
-                    bestMove: ''
-                });
+                resCall({ evalCp: currentBatchEval, bestMove: '' });
             }
-        }, 450);
+        }, 400);
 
         stockfishWorker.postMessage('stop');
         stockfishWorker.postMessage(`position startpos moves ${moveUciString}`);
@@ -103,34 +92,35 @@ function evaluateFenWithStockfish(moveUciString) {
 
 /**
  * LICHESS MASTERS OPENING EXPLORER API
+ * Checks whether theplayed UCI move is part of established master theory.
  */
-async function isLichessBookMove(previousMoves, playedMove) {
+async function fetchLichessMasterBookMoves(playMovesArray) {
     try {
         const params = new URLSearchParams();
         params.set('variant', 'standard');
-        params.set('moves', '20');
+        params.set('moves', '12');
 
-        if (previousMoves && previousMoves.length > 0) {
-            params.set('play', previousMoves.join(','));
+        if (playMovesArray && playMovesArray.length > 0) {
+            params.set('play', playMovesArray.join(','));
         }
 
-        const response = await fetch(`https://explorer.lichess.ovh/masters?${params.toString()}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-        if (!response.ok) {
-            return false;
-        }
+        const response = await fetch(`https://explorer.lichess.ovh/masters?${params.toString()}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) return [];
 
         const data = await response.json();
+        if (!data || !Array.isArray(data.moves)) return [];
 
-        if (!data || !Array.isArray(data.moves)) {
-            return false;
-        }
-
-        // Check if the played move exists in the master database responses
-        return data.moves.some(m => m.uci.toLowerCase() === playedMove.toLowerCase());
-
+        // Return list of candidate master UCI move strings
+        return data.moves.map(m => m.uci.toLowerCase());
     } catch (err) {
-        return false;
+        return [];
     }
 }
 
@@ -159,25 +149,53 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
     const progressText = document.getElementById('analysis-progress-text');
     const progressBar = document.getElementById('analysis-progress-bar');
 
-    let evalHistory = [{ evalCp: 0, winProb: 0.5, bestMove: '' }];
     let uciHistory = [];
     let tempGame = new Chess();
-
-    // 1. Run Stockfish evaluations sequentially
+    
+    // Construct full UCI move history array
     for (let i = 0; i < reviewHistory.length; i++) {
-        const ply = i + 1;
-        const moveObj = reviewHistory[i];
-
-        const m = tempGame.move(moveObj);
+        const m = tempGame.move(reviewHistory[i]);
         if (m) {
             uciHistory.push(m.from + m.to + (m.promotion || ''));
         }
+    }
 
-        const pct = Math.min(100, Math.round((ply / reviewHistory.length) * 100));
-        if (progressText) progressText.innerText = `Analyzing position ${ply} of ${reviewHistory.length}... (${pct}%)`;
+    // PHASE 1: PRE-CHECK OPENING BOOK WITH LICHESS API
+    let bookMask = new Array(reviewHistory.length).fill(false);
+    let inBook = true;
+
+    if (progressText) progressText.innerText = "Checking Opening Theory against Lichess Masters Database...";
+    if (progressBar) progressBar.style.width = "10%";
+
+    const MAX_BOOK_PLY = 20; // Check up to first 10 moves per player
+    for (let ply = 1; ply <= Math.min(reviewHistory.length, MAX_BOOK_PLY); ply++) {
+        if (!inBook) break;
+
+        const previousMoves = uciHistory.slice(0, ply - 1);
+        const playedUci = uciHistory[ply - 1];
+
+        const validBookMoves = await fetchLichessMasterBookMoves(previousMoves);
+
+        if (validBookMoves.includes(playedUci.toLowerCase())) {
+            bookMask[ply - 1] = true;
+        } else {
+            inBook = false; // Player diverged from Master Theory; stop querying API
+        }
+    }
+
+    // PHASE 2: STOCKFISH ENGINE ANALYSIS
+    let evalHistory = [{ evalCp: 0, winProb: 0.5, bestMove: '' }];
+    
+    for (let i = 0; i < reviewHistory.length; i++) {
+        const ply = i + 1;
+
+        const pct = Math.min(100, Math.round(10 + ((ply / reviewHistory.length) * 90)));
+        if (progressText) progressText.innerText = `Evaluating position ${ply} of ${reviewHistory.length}... (${pct}%)`;
         if (progressBar) progressBar.style.width = `${pct}%`;
 
-        const evalRes = await evaluateFenWithStockfish(uciHistory.join(' '));
+        const movesSoFar = uciHistory.slice(0, ply).join(' ');
+        const evalRes = await evaluateFenWithStockfish(movesSoFar);
+        
         const isWhite = (ply % 2 === 1);
         let whiteCp = isWhite ? -evalRes.evalCp : evalRes.evalCp;
 
@@ -188,7 +206,7 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
         };
     }
 
-    // 2. Classify moves (checking Lichess Book first for early moves)
+    // PHASE 3: MAP FINAL TIERS & SAVE TO SUPABASE
     let structuredAnalysis = [{ ply: 0, move: 'Start', eval: 0.0, cat: 3, code: 'Best', bestMove: '' }];
     let whiteScores = [];
     let blackScores = [];
@@ -203,23 +221,15 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
             ? (prevEval.winProb - currEval.winProb) 
             : (currEval.winProb - prevEval.winProb);
 
-        const playedUci = uciHistory[ply - 1] || '';
-        const previousMoves = uciHistory.slice(0, ply - 1);
-
-        // Query Lichess Masters Explorer for book validation
-        let isBookMove = false;
-        if (ply <= 16 && playedUci) { // Limit master book lookups to first 8 moves per side
-            isBookMove = await isLichessBookMove(previousMoves, playedUci);
-        }
-
         let catCode = 3;
         let scoreValue = 100;
 
-        if (moveObj.san && moveObj.san.includes('#')) {
-            catCode = 3;
+        // Check if identified as Book in Phase 1
+        if (bookMask[ply - 1]) {
+            catCode = 6; // Book 📖
             scoreValue = 100;
-        } else if (isBookMove) {
-            catCode = 6; // Book (📖)
+        } else if (moveObj.san && moveObj.san.includes('#')) {
+            catCode = 3;
             scoreValue = 100;
         } else if (Math.abs(prevEval.evalCp) >= 500 && winLossPct > 0.25) {
             catCode = 9;
