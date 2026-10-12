@@ -92,13 +92,20 @@ function evaluateFenWithStockfish(moveUciString) {
 
 /**
  * OPENING BOOK (Lichess chess-openings dataset - public domain, no API, no token)
- * Loaded once from GitHub's raw CDN and cached for the rest of the session.
- * Every opening line is stored along with all of its shortened versions, so
- * "1. e4 e5 2. Nf3 Nc6" also registers "e4", "e4 e5" and "e4 e5 Nf3".
+ *
+ * Every opening line is replayed and the BOARD POSITION after each move is stored.
+ * A played move is Book if the position it creates is in this set, so transpositions
+ * (reaching a known position by a different move order) are recognised as Book.
  */
 const OPENING_BOOK_FILES = ['a', 'b', 'c', 'd', 'e'].map(
     letter => `https://raw.githubusercontent.com/lichess-org/chess-openings/master/${letter}.tsv`
 );
+
+// Position key = piece placement + side to move + castling rights
+// (en passant and move counters are ignored so equal positions always match)
+function positionKey(fen) {
+    return fen.split(' ').slice(0, 3).join(' ');
+}
 
 let openingBookPromise = null;
 
@@ -106,7 +113,7 @@ function loadOpeningBook() {
     if (openingBookPromise) return openingBookPromise;
 
     openingBookPromise = (async () => {
-        const bookSet = new Set();
+        const positionSet = new Set();
         try {
             const texts = await Promise.all(
                 OPENING_BOOK_FILES.map(url =>
@@ -126,8 +133,11 @@ function loadOpeningBook() {
                         .split(/\s+/)
                         .filter(Boolean);
 
-                    for (let i = 1; i <= sans.length; i++) {
-                        bookSet.add(sans.slice(0, i).join(' '));
+                    const g = new Chess();
+                    for (const san of sans) {
+                        const mv = g.move(san);
+                        if (!mv) break;
+                        positionSet.add(positionKey(g.fen()));
                     }
                 }
             }
@@ -135,11 +145,11 @@ function loadOpeningBook() {
             console.warn('Opening book failed to load:', err);
         }
 
-        if (bookSet.size === 0) {
+        if (positionSet.size === 0) {
             console.warn('Opening book is empty - Book moves will not be detected.');
             openingBookPromise = null; // allow a retry on the next analysis
         }
-        return bookSet;
+        return positionSet;
     })();
 
     return openingBookPromise;
@@ -171,30 +181,29 @@ export async function runFullGameAnalysis(activeGame, reviewHistory) {
     const progressBar = document.getElementById('analysis-progress-bar');
 
     let uciHistory = [];
-    let sanHistory = [];
+    let positionKeys = [];
     let tempGame = new Chess();
 
-    // Construct full UCI and SAN move history arrays
+    // Construct full UCI move history and the position after every move
     for (let i = 0; i < reviewHistory.length; i++) {
         const m = tempGame.move(reviewHistory[i]);
         if (m) {
             uciHistory.push(m.from + m.to + (m.promotion || ''));
-            sanHistory.push(m.san);
+            positionKeys.push(positionKey(tempGame.fen()));
         }
     }
 
-    // PHASE 1: CHECK OPENING BOOK
+    // PHASE 1: CHECK OPENING BOOK (position based)
     let bookMask = new Array(reviewHistory.length).fill(false);
 
     if (progressText) progressText.innerText = "Checking Opening Theory...";
     if (progressBar) progressBar.style.width = "10%";
 
-    const bookSet = await loadOpeningBook();
+    const bookPositions = await loadOpeningBook();
 
-    // A move is Book only while the game so far is still inside a known opening line
-    for (let ply = 1; ply <= sanHistory.length; ply++) {
-        const lineSoFar = sanHistory.slice(0, ply).join(' ');
-        if (bookSet.has(lineSoFar)) {
+    // A move is Book while the game stays inside known opening positions
+    for (let ply = 1; ply <= positionKeys.length; ply++) {
+        if (bookPositions.has(positionKeys[ply - 1])) {
             bookMask[ply - 1] = true;
         } else {
             break; // Left opening theory; stop checking
