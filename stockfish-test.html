@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stockfish 19 Connection Test</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    max-width: 900px;
+    margin: 35px auto;
+    padding: 0 20px;
+    background: #f5f5f5;
+    color: #222;
+}
+.box {
+    background: white;
+    padding: 22px;
+    border-radius: 10px;
+}
+button {
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 16px;
+}
+button:disabled {
+    opacity: 0.5;
+}
+#status {
+    margin: 18px 0;
+    font-weight: bold;
+}
+pre {
+    background: #101827;
+    color: #d8f5dd;
+    padding: 16px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 450px;
+    overflow-y: auto;
+}
+</style>
+</head>
+<body>
+
+<div class="box">
+    <h1>Stockfish 19 Connection Test</h1>
+
+    <p>
+        Tests the uploaded JavaScript and WASM files.
+        Your existing chess app is not changed.
+    </p>
+
+    <button id="test" type="button">Test Stockfish</button>
+
+    <div id="status" role="status">Ready.</div>
+    <div id="engine"></div>
+    <div id="result"></div>
+
+    <h2>Engine messages</h2>
+    <pre id="log"></pre>
+</div>
+
+<script>
+"use strict";
+
+const button = document.getElementById("test");
+const statusBox = document.getElementById("status");
+const engineBox = document.getElementById("engine");
+const resultBox = document.getElementById("result");
+const logBox = document.getElementById("log");
+
+const enginePath =
+    "./Assets/stockfish-19-lite-single.js";
+
+const wasmPath =
+    "./Assets/stockfish-19-lite-single.wasm";
+
+let worker = null;
+let timer = null;
+let stage = "idle";
+let latestScore = "";
+let latestDepth = 0;
+
+function log(message) {
+    logBox.textContent += message + "\n";
+    logBox.scrollTop = logBox.scrollHeight;
+}
+
+function cleanUp() {
+    clearTimeout(timer);
+    timer = null;
+
+    if (worker) {
+        worker.terminate();
+        worker = null;
+    }
+
+    stage = "idle";
+    button.disabled = false;
+}
+
+function fail(message) {
+    statusBox.textContent = "Error: " + message;
+    log("ERROR: " + message);
+    cleanUp();
+}
+
+function armTimeout(message) {
+    clearTimeout(timer);
+
+    timer = setTimeout(function () {
+        fail(message);
+    }, 60000);
+}
+
+function send(command) {
+    log("> " + command);
+    worker.postMessage(command);
+}
+
+function handleLine(line) {
+    line = line.trim();
+    if (!line) return;
+
+    log(line);
+
+    if (line.startsWith("id name ")) {
+        engineBox.textContent =
+            "Engine reports: " + line.slice(8);
+    }
+
+    if (line === "uciok" && stage === "uci") {
+        stage = "ready";
+
+        send("setoption name Threads value 1");
+        send("setoption name Hash value 32");
+        send("setoption name MultiPV value 1");
+        send("isready");
+
+        statusBox.textContent =
+            "Engine identified. Checking readiness...";
+
+        armTimeout("Engine did not report readyok.");
+        return;
+    }
+
+    if (line === "readyok" && stage === "ready") {
+        stage = "search";
+
+        statusBox.textContent =
+            "Engine ready. Analysing the starting position...";
+
+        send("position startpos");
+        send("go depth 12");
+
+        armTimeout("Engine did not complete the test search.");
+        return;
+    }
+
+    if (stage !== "search") return;
+
+    if (line.startsWith("info ")) {
+        const depthMatch = line.match(/\bdepth\s+(\d+)/);
+        const cpMatch = line.match(/\bscore cp (-?\d+)/);
+        const mateMatch = line.match(/\bscore mate (-?\d+)/);
+
+        if (depthMatch) {
+            latestDepth = Number(depthMatch[1]);
+        }
+
+        if (cpMatch) {
+            const score = Number(cpMatch[1]) / 100;
+
+            latestScore =
+                (score > 0 ? "+" : "") + score.toFixed(2);
+        } else if (mateMatch) {
+            latestScore = "Mate " + mateMatch[1];
+        }
+
+        resultBox.textContent =
+            "Depth: " + latestDepth +
+            " | Evaluation: " + (latestScore || "pending");
+    }
+
+    if (line.startsWith("bestmove ")) {
+        const bestMove = line.split(/\s+/)[1];
+
+        resultBox.textContent =
+            "Depth: " + latestDepth +
+            " | Evaluation: " + (latestScore || "not returned") +
+            " | Best move: " + bestMove;
+
+        statusBox.textContent =
+            "SUCCESS: Stockfish loaded and completed a search.";
+
+        cleanUp();
+    }
+}
+
+button.addEventListener("click", async function () {
+    cleanUp();
+
+    button.disabled = true;
+    logBox.textContent = "";
+    engineBox.textContent = "";
+    resultBox.textContent = "";
+    latestScore = "";
+    latestDepth = 0;
+
+    statusBox.textContent = "Checking uploaded engine files...";
+
+    try {
+        // HEAD checks availability without downloading the WASM twice.
+        for (const path of [enginePath, wasmPath]) {
+            const response = await fetch(path, {
+                method: "HEAD",
+                cache: "no-cache"
+            });
+
+            if (!response.ok) {
+                throw new Error(
+                    path + " returned HTTP " + response.status +
+                    ". Check the filename and capitalisation."
+                );
+            }
+
+            const contentType =
+                response.headers.get("content-type") || "";
+
+            if (contentType.includes("text/html")) {
+                throw new Error(
+                    path + " returned an HTML page instead of an engine file."
+                );
+            }
+
+            log("File available: " + path);
+        }
+
+        // Load the worker directly from the site, not from a Blob.
+        // Its companion WASM stays beside the JavaScript file.
+        worker = new Worker(
+            new URL(enginePath, document.baseURI).href
+        );
+
+        worker.onmessage = function (event) {
+            for (const line of String(event.data).split(/\r?\n/)) {
+                handleLine(line);
+            }
+        };
+
+        worker.onerror = function (event) {
+            event.preventDefault();
+
+            fail(
+                event.message ||
+                "Worker failed. Check that both matching engine files " +
+                "are in the Assets folder."
+            );
+        };
+
+        worker.onmessageerror = function () {
+            fail("The browser could not read an engine message.");
+        };
+
+        stage = "uci";
+        statusBox.textContent = "Loading Stockfish and its WASM file...";
+
+        armTimeout("Stockfish did not finish initialising.");
+        send("uci");
+
+    } catch (error) {
+        fail(error.message);
+    }
+});
+</script>
+
+</body>
+</html>
