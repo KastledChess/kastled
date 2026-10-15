@@ -1,279 +1,198 @@
+/*
+    =====================================================
+    PASTE YOUR TEST LICHESS TOKEN BETWEEN THE QUOTATION MARKS
+const TEST_LICHESS_TOKEN = "lip_ZVNU7yE19y4iLtF7t5Pd"; v1.01
+
+    =====================================================
+*/
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stockfish 19 Connection Test</title>
+<title>Kastled PGN Review Tester</title>
 <style>
 body {
     font-family: Arial, sans-serif;
-    max-width: 900px;
-    margin: 35px auto;
-    padding: 0 20px;
+    max-width: 1450px;
+    margin: 30px auto;
+    padding: 0 18px;
     background: #f5f5f5;
     color: #222;
 }
 .box {
     background: white;
-    padding: 22px;
+    padding: 20px;
     border-radius: 10px;
+    margin-bottom: 20px;
+}
+textarea, input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px;
+    margin: 8px 0 16px;
+}
+textarea {
+    min-height: 220px;
+    font-family: monospace;
+    resize: vertical;
 }
 button {
-    padding: 12px 20px;
+    padding: 11px 18px;
+    margin: 8px 7px 0 0;
+    font-size: 15px;
     cursor: pointer;
-    font-size: 16px;
 }
-button:disabled {
-    opacity: 0.5;
+button:disabled { opacity: .5; cursor: not-allowed; }
+.table-wrap { overflow-x: auto; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    font-size: 14px;
 }
-#status {
-    margin: 18px 0;
-    font-weight: bold;
+th, td {
+    border-bottom: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+    vertical-align: top;
 }
-pre {
-    background: #101827;
-    color: #d8f5dd;
-    padding: 16px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    max-height: 450px;
-    overflow-y: auto;
+th { background: #eee; }
+.Brilliant { color: #0d9488; font-weight: bold; }
+.Great { color: #2563eb; font-weight: bold; }
+.Best { color: #10b981; font-weight: bold; }
+.Excellent { color: #65a30d; font-weight: bold; }
+.Good { color: #475569; font-weight: bold; }
+.Book { color: #b45309; font-weight: bold; }
+.Inaccuracy { color: #a17a00; font-weight: bold; }
+.Mistake { color: #f97316; font-weight: bold; }
+.Miss { color: #f43f5e; font-weight: bold; }
+.Blunder { color: #dc2626; font-weight: bold; }
+.warning {
+    background: #fff3cd;
+    padding: 12px;
+    border-radius: 7px;
 }
+.status { margin-top: 12px; font-weight: bold; }
+.small, .stats { color: #555; margin-top: 8px; }
+.summary {
+    display: grid;
+    grid-template-columns: 180px 1fr 1fr;
+    max-width: 550px;
+    gap: 7px;
+    margin-top: 15px;
+}
+.summary > div { padding: 5px; border-bottom: 1px solid #eee; }
+.summary-header { font-weight: bold; background: #eee; }
+a { color: #1565c0; }
 </style>
 </head>
 <body>
 
-<div class="box">
-    <h1>Stockfish 19 Connection Test</h1>
+<h1>Kastled PGN Review Tester</h1>
 
+<div class="box">
     <p>
-        Tests the uploaded JavaScript and WASM files.
-        Your existing chess app is not changed.
+        Lichess opening checks followed by Stockfish 19 Lite analysis.
+        Completed moves appear progressively.
     </p>
 
-    <button id="test" type="button">Test Stockfish</button>
+    <p class="warning">
+        Enter your token below. This page does not save it to browser
+        storage or put it in the published source. It sends the token
+        to Lichess to authenticate opening requests.
+    </p>
 
-    <div id="status" role="status">Ready.</div>
-    <div id="engine"></div>
-    <div id="result"></div>
+    <label for="token"><strong>Lichess token</strong></label>
+    <input id="token" type="password" autocomplete="off"
+        spellcheck="false" placeholder="lip_ZVNU7yE19y4iLtF7t5Pd">
 
-    <h2>Engine messages</h2>
-    <pre id="log"></pre>
+    <label for="pgnInput"><strong>PGNs</strong></label>
+    <textarea id="pgnInput"
+        placeholder='Paste PGNs here. For multiple games, use [Event "..."] headers.'></textarea>
+
+    <button id="analyseButton" type="button">Analyse PGNs</button>
+    <button id="stopButton" type="button" disabled>Stop</button>
+
+    <div id="status" class="status" role="status">Starting interface...</div>
+    <div id="engineName" class="small"></div>
+    <div id="stats" class="stats"></div>
 </div>
 
+<div id="results"></div>
+
 <script>
-"use strict";
-
-const button = document.getElementById("test");
-const statusBox = document.getElementById("status");
-const engineBox = document.getElementById("engine");
-const resultBox = document.getElementById("result");
-const logBox = document.getElementById("log");
-
-const enginePath =
-    "./Assets/stockfish-19-lite-single.js";
-
-const wasmPath =
-    "./Assets/stockfish-19-lite-single.wasm";
-
-let worker = null;
-let timer = null;
-let stage = "idle";
-let latestScore = "";
-let latestDepth = 0;
-
-function log(message) {
-    logBox.textContent += message + "\n";
-    logBox.scrollTop = logBox.scrollHeight;
-}
-
-function cleanUp() {
-    clearTimeout(timer);
-    timer = null;
-
-    if (worker) {
-        worker.terminate();
-        worker = null;
+window.addEventListener("error", function(event) {
+    const element = document.getElementById("status");
+    if (element) {
+        element.textContent =
+            "JavaScript error: " + event.message +
+            " (line " + event.lineno + ")";
     }
-
-    stage = "idle";
-    button.disabled = false;
-}
-
-function fail(message) {
-    statusBox.textContent = "Error: " + message;
-    log("ERROR: " + message);
-    cleanUp();
-}
-
-function armTimeout(message) {
-    clearTimeout(timer);
-
-    timer = setTimeout(function () {
-        fail(message);
-    }, 60000);
-}
-
-function send(command) {
-    log("> " + command);
-    worker.postMessage(command);
-}
-
-function handleLine(line) {
-    line = line.trim();
-    if (!line) return;
-
-    log(line);
-
-    if (line.startsWith("id name ")) {
-        engineBox.textContent =
-            "Engine reports: " + line.slice(8);
-    }
-
-    if (line === "uciok" && stage === "uci") {
-        stage = "ready";
-
-        send("setoption name Threads value 1");
-        send("setoption name Hash value 32");
-        send("setoption name MultiPV value 1");
-        send("isready");
-
-        statusBox.textContent =
-            "Engine identified. Checking readiness...";
-
-        armTimeout("Engine did not report readyok.");
-        return;
-    }
-
-    if (line === "readyok" && stage === "ready") {
-        stage = "search";
-
-        statusBox.textContent =
-            "Engine ready. Analysing the starting position...";
-
-        send("position startpos");
-        send("go depth 12");
-
-        armTimeout("Engine did not complete the test search.");
-        return;
-    }
-
-    if (stage !== "search") return;
-
-    if (line.startsWith("info ")) {
-        const depthMatch = line.match(/\bdepth\s+(\d+)/);
-        const cpMatch = line.match(/\bscore cp (-?\d+)/);
-        const mateMatch = line.match(/\bscore mate (-?\d+)/);
-
-        if (depthMatch) {
-            latestDepth = Number(depthMatch[1]);
-        }
-
-        if (cpMatch) {
-            const score = Number(cpMatch[1]) / 100;
-
-            latestScore =
-                (score > 0 ? "+" : "") + score.toFixed(2);
-        } else if (mateMatch) {
-            latestScore = "Mate " + mateMatch[1];
-        }
-
-        resultBox.textContent =
-            "Depth: " + latestDepth +
-            " | Evaluation: " + (latestScore || "pending");
-    }
-
-    if (line.startsWith("bestmove ")) {
-        const bestMove = line.split(/\s+/)[1];
-
-        resultBox.textContent =
-            "Depth: " + latestDepth +
-            " | Evaluation: " + (latestScore || "not returned") +
-            " | Best move: " + bestMove;
-
-        statusBox.textContent =
-            "SUCCESS: Stockfish loaded and completed a search.";
-
-        cleanUp();
-    }
-}
-
-button.addEventListener("click", async function () {
-    cleanUp();
-
-    button.disabled = true;
-    logBox.textContent = "";
-    engineBox.textContent = "";
-    resultBox.textContent = "";
-    latestScore = "";
-    latestDepth = 0;
-
-    statusBox.textContent = "Checking uploaded engine files...";
-
-    try {
-        // HEAD checks availability without downloading the WASM twice.
-        for (const path of [enginePath, wasmPath]) {
-            const response = await fetch(path, {
-                method: "HEAD",
-                cache: "no-cache"
-            });
-
-            if (!response.ok) {
-                throw new Error(
-                    path + " returned HTTP " + response.status +
-                    ". Check the filename and capitalisation."
-                );
-            }
-
-            const contentType =
-                response.headers.get("content-type") || "";
-
-            if (contentType.includes("text/html")) {
-                throw new Error(
-                    path + " returned an HTML page instead of an engine file."
-                );
-            }
-
-            log("File available: " + path);
-        }
-
-        // Load the worker directly from the site, not from a Blob.
-        // Its companion WASM stays beside the JavaScript file.
-        worker = new Worker(
-            new URL(enginePath, document.baseURI).href
-        );
-
-        worker.onmessage = function (event) {
-            for (const line of String(event.data).split(/\r?\n/)) {
-                handleLine(line);
-            }
-        };
-
-        worker.onerror = function (event) {
-            event.preventDefault();
-
-            fail(
-                event.message ||
-                "Worker failed. Check that both matching engine files " +
-                "are in the Assets folder."
-            );
-        };
-
-        worker.onmessageerror = function () {
-            fail("The browser could not read an engine message.");
-        };
-
-        stage = "uci";
-        statusBox.textContent = "Loading Stockfish and its WASM file...";
-
-        armTimeout("Stockfish did not finish initialising.");
-        send("uci");
-
-    } catch (error) {
-        fail(error.message);
+});
+window.addEventListener("unhandledrejection", function(event) {
+    const element = document.getElementById("status");
+    if (element) {
+        element.textContent = "Error: " +
+            (event.reason && event.reason.message
+                ? event.reason.message
+                : String(event.reason));
     }
 });
 </script>
 
-</body>
-</html>
+<script>
+"use strict";
+
+const STOCKFISH_DEPTH = 12;
+const MULTIPV = 2;
+
+const ENGINE_PATH = "./Assets/stockfish-19-lite-single.js";
+const WASM_PATH = "./Assets/stockfish-19-lite-single.wasm";
+
+const PARSER_SOURCES = [
+    "https://esm.sh/chess.js@1.4.0",
+    "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"
+];
+
+const tokenInput = document.getElementById("token");
+const pgnInput = document.getElementById("pgnInput");
+const analyseButton = document.getElementById("analyseButton");
+const stopButton = document.getElementById("stopButton");
+const statusElement = document.getElementById("status");
+const engineElement = document.getElementById("engineName");
+const statsElement = document.getElementById("stats");
+const resultsElement = document.getElementById("results");
+
+let Chess = null;
+let stopped = false;
+let running = false;
+let activeToken = "";
+let activeFetch = null;
+
+let lichessRequests = 0;
+let lichessCacheHits = 0;
+let engineSearches = 0;
+let engineCacheHits = 0;
+
+const explorerCache = new Map();
+const engineCache = new Map();
+
+let worker = null;
+let engineInitialisation = null;
+let engineHandshake = null;
+let currentSearch = null;
+
+const CLASSIFICATIONS = [
+    "Brilliant", "Great", "Best", "Excellent", "Good",
+    "Book", "Inaccuracy", "Mistake", "Miss", "Blunder"
+];
+
+const CLASSIFICATION_SCORE = {
+    Brilliant: 100, Great: 100, Best: 100,
+    Excellent: 92, Good: 80, Book: 100,
+    Inaccuracy: 60, Mistake: 30, Miss: 15, Blunder: 0
+};
+
+function checkStopped
