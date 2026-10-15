@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lichess Connector Test</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    max-width: 850px;
+    margin: 35px auto;
+    padding: 20px;
+}
+button {
+    padding: 12px 20px;
+    font-size: 16px;
+    cursor: pointer;
+}
+pre {
+    background: #f1f1f1;
+    padding: 18px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#status {
+    margin: 20px 0;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<h1>Lichess Connector Test</h1>
+
+<p>
+    Sign into your Kastled chess app in this browser first.
+    This test uses that Supabase session.
+</p>
+
+<button id="test" type="button">Test connector</button>
+<div id="status" role="status">Ready.</div>
+<pre id="output"></pre>
+
+<script>
+"use strict";
+
+const SUPABASE_URL =
+    "https://sgpafvuexdmnbdbvveny.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+    "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
+
+const button = document.getElementById("test");
+const statusBox = document.getElementById("status");
+const output = document.getElementById("output");
+
+let client = null;
+
+function timeout(promise, milliseconds) {
+    let timer;
+
+    return Promise.race([
+        promise,
+        new Promise(function(resolve, reject) {
+            timer = setTimeout(function() {
+                reject(new Error("Request timed out."));
+            }, milliseconds);
+        })
+    ]).finally(function() {
+        clearTimeout(timer);
+    });
+}
+
+button.addEventListener("click", async function() {
+    button.disabled = true;
+    output.textContent = "";
+
+    try {
+        statusBox.textContent = "Loading Supabase connector...";
+
+        if (!client) {
+            const library = await timeout(
+                import("https://esm.sh/@supabase/supabase-js@2"),
+                15000
+            );
+
+            client = library.createClient(
+                SUPABASE_URL,
+                SUPABASE_PUBLISHABLE_KEY
+            );
+        }
+
+        statusBox.textContent = "Checking your Kastled login...";
+
+        const sessionResult = await timeout(
+            client.auth.getSession(),
+            15000
+        );
+
+        if (sessionResult.error) {
+            throw sessionResult.error;
+        }
+
+        const session = sessionResult.data.session;
+
+        if (!session) {
+            throw new Error(
+                "No Kastled login found. Sign into your chess app " +
+                "in the same browser, then return here and try again. " +
+                "Signing into the Supabase dashboard is not the same login."
+            );
+        }
+
+        statusBox.textContent =
+            "Calling the lichess-opening function...";
+
+        const result = await timeout(
+            client.functions.invoke("lichess-opening", {
+                headers: {
+                    Authorization: "Bearer " + session.access_token
+                },
+                body: {
+                    moves: [
+                        "e2e4",
+                        "e7e5",
+                        "g1f3",
+                        "b8c6",
+                        "d2d4",
+                        "d7d6",
+                        "f1c4"
+                    ]
+                }
+            }),
+            35000
+        );
+
+        if (result.error) {
+            let details = "";
+
+            if (
+                result.error.context &&
+                typeof result.error.context.clone === "function"
+            ) {
+                try {
+                    details =
+                        await result.error.context.clone().text();
+                } catch {
+                    details = "";
+                }
+            }
+
+            throw new Error(
+                result.error.message +
+                (details ? "\n" + details : "")
+            );
+        }
+
+        if (result.data && result.data.error) {
+            throw new Error(result.data.error);
+        }
+
+        statusBox.textContent =
+            "SUCCESS: the connector returned Lichess data.";
+
+        output.textContent =
+            JSON.stringify(result.data, null, 2);
+
+    } catch (error) {
+        statusBox.textContent = "Test failed.";
+        output.textContent = error.message;
+
+    } finally {
+        button.disabled = false;
+    }
+});
+</script>
+
+</body>
+</html>
