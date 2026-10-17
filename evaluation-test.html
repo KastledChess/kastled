@@ -5,6 +5,7 @@ v1.04
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evaluation Comparison Test</title>
+
 <style>
 body {
     font-family: Arial, sans-serif;
@@ -14,12 +15,14 @@ body {
     background: #f5f5f5;
     color: #222;
 }
+
 .box {
     background: white;
     padding: 20px;
     margin-bottom: 20px;
     border-radius: 10px;
 }
+
 textarea {
     width: 100%;
     box-sizing: border-box;
@@ -27,41 +30,65 @@ textarea {
     padding: 12px;
     font-family: monospace;
 }
+
 button {
     padding: 12px 18px;
     margin: 12px 8px 0 0;
     cursor: pointer;
 }
+
 button:disabled {
     opacity: .5;
     cursor: not-allowed;
 }
-.scroll { overflow-x: auto; }
+
+.scroll {
+    overflow-x: auto;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
 }
-th, td {
+
+th,
+td {
     padding: 9px;
     border-bottom: 1px solid #ddd;
     text-align: left;
     vertical-align: top;
 }
-th { background: #eee; }
-.large-gap { background: #fff0db; }
+
+th {
+    background: #eee;
+}
+
+.large-gap {
+    background: #fff0db;
+}
+
 pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    max-width: 650px;
+    max-width: 750px;
 }
-#status { font-weight: bold; margin-top: 15px; }
-.small { color: #555; }
+
+#status {
+    font-weight: bold;
+    margin-top: 15px;
+}
+
+.small {
+    color: #555;
+}
 </style>
 </head>
+
 <body>
 
 <div class="box">
+
     <h1>Evaluation Comparison Test</h1>
 
     <p>
@@ -70,657 +97,886 @@ pre {
     </p>
 
     <p class="small">
-        Stockfish depth 14, MultiPV 2, one thread.
+        Full Stockfish 19, 1,000,000 nodes per position,
+        MultiPV 2, one thread, 512 MB hash.
         Scores are shown from White's perspective.
         No classifications or opening lookups are performed.
     </p>
 
-    <textarea id="pgn" placeholder="Paste the annotated PGN here"></textarea>
+    <textarea
+        id="pgn"
+        placeholder="Paste the annotated PGN here"
+    ></textarea>
 
-    <button id="compare" type="button">Compare evaluations</button>
-    <button id="stop" type="button" disabled>Stop</button>
+    <button id="compare" type="button">
+        Compare evaluations
+    </button>
 
-    <div id="status" role="status">Ready.</div>
+    <button id="stop" type="button" disabled>
+        Stop
+    </button>
+
+    <div id="status" role="status">
+        Ready.
+    </div>
+
     <p id="engine"></p>
     <p id="summary"></p>
+
 </div>
 
+
 <div class="box scroll">
+
 <table>
+
 <thead>
 <tr>
     <th>Move</th>
     <th>Lichess reference</th>
     <th>Our Stockfish</th>
     <th>Difference</th>
-    <th>Reached Depth</th>
+    <th>Reached depth</th>
+    <th>Nodes</th>
     <th>Engine time</th>
     <th>Diagnostics</th>
 </tr>
 </thead>
+
 <tbody id="rows"></tbody>
+
 </table>
+
 </div>
+
 
 <script>
 "use strict";
 
+
+/*
+    ============================================================
+    ENGINE SETTINGS
+
+    The Lichess analysis screenshot showed:
+        Stockfish 19 full
+        1,000,000 nodes per move
+        512 MB hash
+
+    Browser engine is single threaded.
+    ============================================================
+*/
+
 const NODES = 1000000;
 const MULTIPV = 2;
-const ENGINE_PATH = "./Assets/stockfish-19-single.js";
+const HASH_MB = 512;
 
-const compareButton = document.getElementById("compare");
-const stopButton = document.getElementById("stop");
-const statusBox = document.getElementById("status");
-const engineBox = document.getElementById("engine");
-const summaryBox = document.getElementById("summary");
-const rowsBox = document.getElementById("rows");
+const ENGINE_PATH =
+    "./Assets/stockfish-19-single.js";
+
+
+const compareButton =
+    document.getElementById("compare");
+
+const stopButton =
+    document.getElementById("stop");
+
+const statusBox =
+    document.getElementById("status");
+
+const engineBox =
+    document.getElementById("engine");
+
+const summaryBox =
+    document.getElementById("summary");
+
+const rowsBox =
+    document.getElementById("rows");
+
 
 let ChessClass = null;
+
 let worker = null;
 let pending = null;
 let handshake = null;
+
 let stopped = false;
 let running = false;
 
-window.addEventListener("error", function(event) {
-    statusBox.textContent = "JavaScript error: " + event.message;
-});
+
+/*
+    GLOBAL ERROR DISPLAY
+*/
+
+window.addEventListener(
+    "error",
+    function(event) {
+
+        statusBox.textContent =
+            "JavaScript error: " +
+            event.message;
+    }
+);
+
+
+window.addEventListener(
+    "unhandledrejection",
+    function(event) {
+
+        const message =
+            event.reason &&
+            event.reason.message
+                ? event.reason.message
+                : String(event.reason);
+
+        statusBox.textContent =
+            "Error: " + message;
+    }
+);
+
+
+/*
+    STOP CHECK
+*/
 
 function checkStopped() {
-    if (stopped) throw new Error("Stopped.");
+
+    if (stopped) {
+        throw new Error("Stopped.");
+    }
 }
 
-function timeout(promise, milliseconds, message) {
+
+/*
+    GENERIC TIMEOUT
+*/
+
+function timeout(
+    promise,
+    milliseconds,
+    message
+) {
+
     let timer;
 
     return Promise.race([
+
         promise,
-        new Promise(function(resolve, reject) {
-            timer = setTimeout(function() {
-                reject(new Error(message));
-            }, milliseconds);
-        })
-    ]).finally(function() {
-        clearTimeout(timer);
-    });
+
+        new Promise(
+            function(resolve, reject) {
+
+                timer =
+                    setTimeout(
+                        function() {
+
+                            reject(
+                                new Error(
+                                    message
+                                )
+                            );
+
+                        },
+                        milliseconds
+                    );
+            }
+        )
+
+    ]).finally(
+        function() {
+
+            clearTimeout(timer);
+        }
+    );
 }
 
+
+/*
+    LOAD CHESS.JS
+*/
+
 async function loadParser() {
-    if (ChessClass) return;
+
+    if (ChessClass) {
+        return;
+    }
 
     const sources = [
+
         "https://esm.sh/chess.js@1.4.0",
+
         "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"
+
     ];
 
-    for (const source of sources) {
+
+    for (
+        const source
+        of sources
+    ) {
+
         checkStopped();
 
         try {
-            const library = await timeout(
-                import(source),
-                15000,
-                "Chess parser download timed out."
-            );
 
-            if (typeof library.Chess !== "function") {
-                throw new Error("Invalid chess parser.");
+            const library =
+                await timeout(
+
+                    import(source),
+
+                    15000,
+
+                    "Chess parser download timed out."
+                );
+
+
+            if (
+                typeof library.Chess !==
+                "function"
+            ) {
+
+                throw new Error(
+                    "Invalid chess parser."
+                );
             }
 
-            ChessClass = library.Chess;
+
+            ChessClass =
+                library.Chess;
+
             return;
 
+
         } catch (error) {
-            if (stopped) throw error;
+
+            if (stopped) {
+                throw error;
+            }
         }
     }
 
-    throw new Error("Could not load the chess parser.");
+
+    throw new Error(
+        "Could not load the chess parser."
+    );
 }
 
+
 /*
-    Extract main-line moves and their following evaluation
-    comments. Ignore headers, nested variations and NAGs.
+    EXTRACT MAIN LINE FROM ANNOTATED PGN
+
+    Variations inside (...) are ignored.
+
+    [%eval ...] is associated with the
+    immediately preceding main-line move.
 */
+
 function extractMainline(text) {
+
     const entries = [];
+
     let variationDepth = 0;
     let index = 0;
 
-    function addToken(token) {
-        if (variationDepth !== 0) return;
 
-        token = token
-            .replace(/^\d+\.(?:\.\.)?/, "")
-            .replace(/^\.+/, "")
-            .replace(/\$\d+/g, "")
-            .replace(/[!?]+/g, "");
+    function addToken(token) {
+
+        if (
+            variationDepth !== 0
+        ) {
+            return;
+        }
+
+
+        token =
+            token
+                .replace(
+                    /^\d+\.(?:\.\.)?/,
+                    ""
+                )
+                .replace(
+                    /^\.+/,
+                    ""
+                )
+                .replace(
+                    /\$\d+/g,
+                    ""
+                )
+                .replace(
+                    /[!?]+/g,
+                    ""
+                );
+
 
         if (
             !token ||
             /^\d+$/.test(token) ||
-            /^(1-0|0-1|1\/2-1\/2|\*)$/.test(token)
-        ) return;
+            /^(1-0|0-1|1\/2-1\/2|\*)$/.test(
+                token
+            )
+        ) {
+
+            return;
+        }
+
 
         entries.push({
-            san: token,
-            reference: null
+
+            san:
+                token,
+
+            reference:
+                null
+
         });
     }
 
-    while (index < text.length) {
-        const char = text[index];
 
-        if (/\s/.test(char)) {
+    while (
+        index < text.length
+    ) {
+
+        const char =
+            text[index];
+
+
+        /*
+            WHITESPACE
+        */
+
+        if (
+            /\s/.test(char)
+        ) {
+
             index++;
+
             continue;
         }
 
-        if (char === "[") {
-            let quoted = false;
+
+        /*
+            PGN HEADER
+        */
+
+        if (
+            char === "["
+        ) {
+
+            let quoted =
+                false;
+
+
             index++;
 
-            while (index < text.length) {
-                const current = text[index];
 
-                if (current === "\\") {
+            while (
+                index <
+                text.length
+            ) {
+
+                const current =
+                    text[index];
+
+
+                if (
+                    current === "\\"
+                ) {
+
                     index += 2;
+
                     continue;
                 }
 
-                if (current === '"') quoted = !quoted;
+
+                if (
+                    current === '"'
+                ) {
+
+                    quoted =
+                        !quoted;
+                }
+
 
                 index++;
 
-                if (current === "]" && !quoted) break;
+
+                if (
+                    current === "]" &&
+                    !quoted
+                ) {
+
+                    break;
+                }
             }
+
 
             continue;
         }
 
-        if (char === "{") {
-            const end = text.indexOf("}", index + 1);
 
-            if (end < 0) {
-                throw new Error("Unclosed PGN comment.");
-            }
+        /*
+            COMMENT
+        */
 
-            const comment = text.slice(index + 1, end);
+        if (
+            char === "{"
+        ) {
 
-            if (variationDepth === 0 && entries.length) {
-                const match = comment.match(
-                    /\[%eval\s+(#[+-]?\d+|[+-]?\d+(?:\.\d+)?)(?:\s*,[^\]]*)?\s*\]/i
+            const end =
+                text.indexOf(
+                    "}",
+                    index + 1
                 );
 
-                if (match) {
-                    const value = match[1];
 
-                    entries[entries.length - 1].reference =
+            if (
+                end < 0
+            ) {
+
+                throw new Error(
+                    "Unclosed PGN comment."
+                );
+            }
+
+
+            const comment =
+                text.slice(
+                    index + 1,
+                    end
+                );
+
+
+            if (
+                variationDepth === 0 &&
+                entries.length
+            ) {
+
+                const match =
+                    comment.match(
+                        /\[%eval\s+(#[+-]?\d+|[+-]?\d+(?:\.\d+)?)(?:\s*,[^\]]*)?\s*\]/i
+                    );
+
+
+                if (match) {
+
+                    const value =
+                        match[1];
+
+
+                    entries[
+                        entries.length - 1
+                    ].reference =
+
                         value.startsWith("#")
+
                             ? {
-                                kind: "mate",
-                                value: Number(value.slice(1))
+
+                                kind:
+                                    "mate",
+
+                                value:
+                                    Number(
+                                        value.slice(
+                                            1
+                                        )
+                                    )
                               }
+
                             : {
-                                kind: "cp",
-                                value: Math.round(Number(value) * 100)
+
+                                kind:
+                                    "cp",
+
+                                value:
+                                    Math.round(
+                                        Number(value) *
+                                        100
+                                    )
                               };
                 }
             }
 
-            index = end + 1;
+
+            index =
+                end + 1;
+
+
             continue;
         }
 
-        if (char === ";") {
+
+        /*
+            LINE COMMENT
+        */
+
+        if (
+            char === ";"
+        ) {
+
             while (
                 index < text.length &&
                 text[index] !== "\n"
-            ) index++;
+            ) {
 
-            continue;
-        }
-
-        if (char === "(") {
-            variationDepth++;
-            index++;
-            continue;
-        }
-
-        if (char === ")") {
-            variationDepth--;
-
-            if (variationDepth < 0) {
-                throw new Error("Unmatched variation bracket.");
+                index++;
             }
 
-            index++;
+
             continue;
         }
 
-        let end = index;
+
+        /*
+            VARIATION START
+        */
+
+        if (
+            char === "("
+        ) {
+
+            variationDepth++;
+
+            index++;
+
+            continue;
+        }
+
+
+        /*
+            VARIATION END
+        */
+
+        if (
+            char === ")"
+        ) {
+
+            variationDepth--;
+
+
+            if (
+                variationDepth < 0
+            ) {
+
+                throw new Error(
+                    "Unmatched variation bracket."
+                );
+            }
+
+
+            index++;
+
+            continue;
+        }
+
+
+        /*
+            NORMAL TOKEN
+        */
+
+        let end =
+            index;
+
 
         while (
-            end < text.length &&
-            !/[\s{}();\[\]]/.test(text[end])
-        ) end++;
+            end <
+                text.length &&
+            !/[\s{}();\[\]]/.test(
+                text[end]
+            )
+        ) {
 
-        if (end === index) {
+            end++;
+        }
+
+
+        if (
+            end === index
+        ) {
+
             index++;
+
             continue;
         }
 
-        addToken(text.slice(index, end));
-        index = end;
+
+        addToken(
+            text.slice(
+                index,
+                end
+            )
+        );
+
+
+        index =
+            end;
     }
 
-    if (variationDepth !== 0) {
-        throw new Error("Unclosed PGN variation.");
+
+    if (
+        variationDepth !== 0
+    ) {
+
+        throw new Error(
+            "Unclosed PGN variation."
+        );
     }
+
 
     return entries;
 }
 
+
+/*
+    DESTROY ENGINE
+*/
+
 function destroyEngine(message) {
+
     if (pending) {
-        const task = pending;
-        pending = null;
-        clearTimeout(task.timer);
-        task.reject(new Error(message || "Engine stopped."));
+
+        const task =
+            pending;
+
+        pending =
+            null;
+
+
+        clearTimeout(
+            task.timer
+        );
+
+
+        task.reject(
+            new Error(
+                message ||
+                "Engine stopped."
+            )
+        );
     }
+
 
     if (handshake) {
-        const task = handshake;
-        handshake = null;
-        clearTimeout(task.timer);
-        task.reject(new Error(message || "Engine stopped."));
+
+        const task =
+            handshake;
+
+        handshake =
+            null;
+
+
+        clearTimeout(
+            task.timer
+        );
+
+
+        task.reject(
+            new Error(
+                message ||
+                "Engine stopped."
+            )
+        );
     }
 
-    if (worker) worker.terminate();
-    worker = null;
+
+    if (worker) {
+
+        worker.terminate();
+    }
+
+
+    worker =
+        null;
 }
+
+
+/*
+    HANDLE STOCKFISH OUTPUT
+*/
 
 function handleLine(line) {
-    line = line.trim();
 
-    if (line.startsWith("id name ")) {
-        engineBox.textContent = "Engine: " + line.slice(8);
-    }
+    line =
+        line.trim();
 
-    if (handshake) {
-        if (line === "uciok" && handshake.stage === "uci") {
-            handshake.stage = "ready";
 
-            worker.postMessage("setoption name Threads value 1");
-            worker.postMessage("setoption name Hash value 512");
-            worker.postMessage(
-                "setoption name MultiPV value " + MULTIPV
-            );
-            worker.postMessage("isready");
-            return;
-        }
-
-        if (line === "readyok" && handshake.stage === "ready") {
-            const task = handshake;
-            handshake = null;
-            clearTimeout(task.timer);
-            task.resolve();
-            return;
-        }
-    }
-
-    if (!pending) return;
-
-    if (
-        line.startsWith("info ") &&
-        line.includes(" score ") &&
-        !/\b(lowerbound|upperbound)\b/.test(line)
-    ) {
-        const rankMatch = line.match(/\bmultipv\s+(\d+)/);
-        const rank = rankMatch ? Number(rankMatch[1]) : 1;
-
-        if (rank === 1) {
-            const depthMatch = line.match(/\bdepth\s+(\d+)/);
-            const cpMatch = line.match(/\bscore cp (-?\d+)/);
-            const mateMatch = line.match(/\bscore mate (-?\d+)/);
-            const timeMatch = line.match(/\btime\s+(\d+)/);
-            const pvMatch = line.match(/\bpv\s+(.+)$/);
-
-            const depth = depthMatch ? Number(depthMatch[1]) : 0;
-
-            if (
-                (cpMatch || mateMatch) &&
-                (!pending.result || depth >= pending.result.depth)
-            ) {
-                pending.result = {
-                    kind: cpMatch ? "cp" : "mate",
-                    value: Number(cpMatch ? cpMatch[1] : mateMatch[1]),
-                    depth: depth,
-                    timeMs: timeMatch ? Number(timeMatch[1]) : null,
-                    pv: pvMatch ? pvMatch[1] : "",
-                    raw: line
-                };
-            }
-        }
-    }
-
-    if (line.startsWith("bestmove ")) {
-        const task = pending;
-        pending = null;
-        clearTimeout(task.timer);
-
-        if (!task.result) {
-            task.reject(new Error("Engine returned no usable score."));
-            return;
-        }
-
-        task.result.bestmove = line;
-        task.resolve(task.result);
-    }
-}
-
-async function startEngine() {
-    destroyEngine();
-    checkStopped();
-
-    worker = new Worker(
-        new URL(ENGINE_PATH, document.baseURI).href
-    );
-
-    worker.onmessage = function(event) {
-        for (const line of String(event.data || "").split(/\r?\n/)) {
-            handleLine(line);
-        }
-    };
-
-    worker.onerror = function(event) {
-        event.preventDefault();
-        destroyEngine(event.message || "Engine worker failed.");
-    };
-
-    await new Promise(function(resolve, reject) {
-        handshake = {
-            resolve,
-            reject,
-            stage: "uci",
-            timer: setTimeout(function() {
-                destroyEngine("Engine initialisation timed out.");
-            }, 60000)
-        };
-
-        worker.postMessage("uci");
-    });
-}
-
-function search(rootFen, moves) {
-    checkStopped();
-
-    return new Promise(function(resolve, reject) {
-        pending = {
-            resolve,
-            reject,
-            result: null,
-            timer: setTimeout(function() {
-                destroyEngine("Engine search timed out.");
-            }, 60000)
-        };
-
-        worker.postMessage(
-            "position fen " + rootFen +
-            (moves.length ? " moves " + moves.join(" ") : "")
-        );
-
-        worker.postMessage("go NODES " + NODES);
-    });
-}
-
-function displayScore(score) {
-    if (!score) return "No reference";
-
-    if (score.kind === "mate") {
-        return (score.value < 0 ? "-M" : "+M") +
-            Math.abs(score.value);
-    }
-
-    if (score.kind === "terminal") return score.text;
-
-    const value = score.value / 100;
-
-    return (value > 0 ? "+" : "") + value.toFixed(2);
-}
-
-function addCell(row, text) {
-    const cell = document.createElement("td");
-    cell.textContent = text;
-    row.appendChild(cell);
-    return cell;
-}
-
-function appendRow(moveLabel, reference, ours, fen, result) {
-    const row = document.createElement("tr");
-
-    const difference =
-        reference && reference.kind === "cp" && ours.kind === "cp"
-            ? (ours.value - reference.value) / 100
-            : null;
-
-    if (difference !== null && Math.abs(difference) >= 0.5) {
-        row.className = "large-gap";
-    }
-
-    addCell(row, moveLabel);
-    addCell(row, displayScore(reference));
-    addCell(row, displayScore(ours));
-
-    addCell(
-        row,
-        difference === null
-            ? "-"
-            : (difference > 0 ? "+" : "") + difference.toFixed(2)
-    );
-
-    addCell(row, result ? result.depth : "-");
-
-    addCell(
-        row,
-        result && result.timeMs !== null
-            ? result.timeMs + " ms"
-            : "-"
-    );
-
-    const diagnosticCell = addCell(row, "");
-    const details = document.createElement("details");
-    const summary = document.createElement("summary");
-    const pre = document.createElement("pre");
-
-    summary.textContent = "FEN / raw engine output";
-
-    pre.textContent =
-        "Resulting FEN:\n" + fen +
-        "\n\n" +
-        (
-            result
-                ? "Original side-to-move score:\n" +
-                  result.raw +
-                  "\n\n" + result.bestmove
-                : "Terminal position: no engine search."
-        );
-
-    details.appendChild(summary);
-    details.appendChild(pre);
-    diagnosticCell.appendChild(details);
-    rowsBox.appendChild(row);
-
-    return difference;
-}
-
-compareButton.addEventListener("click", async function() {
-    if (running) return;
-
-    const pgn = document.getElementById("pgn").value.trim();
-
-    if (!pgn) {
-        statusBox.textContent = "Paste the annotated PGN first.";
+    if (!line) {
         return;
     }
 
-    running = true;
-    stopped = false;
-    compareButton.disabled = true;
-    stopButton.disabled = false;
-    rowsBox.replaceChildren();
-    summaryBox.textContent = "";
 
-    try {
-        statusBox.textContent = "Loading chess parser...";
-        await loadParser();
-        checkStopped();
+    /*
+        IDENTIFY ENGINE
+    */
 
-        const entries = extractMainline(pgn);
+    if (
+        line.startsWith(
+            "id name "
+        )
+    ) {
 
-        if (!entries.length) {
-            throw new Error("No main-line moves found.");
-        }
-
-        if (!entries.some(function(entry) {
-            return entry.reference !== null;
-        })) {
-            throw new Error(
-                "No [%eval ...] comments found. Use the annotated PGN."
-            );
-        }
-
-        const fenTag = pgn.match(
-            /^\s*\[FEN\s+"([^"]+)"\]/m
-        );
-
-        const game = fenTag
-            ? new ChessClass(fenTag[1])
-            : new ChessClass();
-
-        const rootFen = game.fen();
-        const moves = [];
-
-        statusBox.textContent = "Loading Stockfish...";
-        await startEngine();
-
-        let compared = 0;
-        let totalAbsoluteDifference = 0;
-        let largestDifference = 0;
-        let largestMove = "";
-
-        for (let index = 0; index < entries.length; index++) {
-            checkStopped();
-
-            const entry = entries[index];
-            const beforeParts = game.fen().split(" ");
-            const moveNumber = beforeParts[5];
-            const whiteMoved = game.turn() === "w";
-
-            let move;
-
-            try {
-                move = game.move(entry.san);
-            } catch {
-                throw new Error(
-                    "Could not read main-line move " +
-                    (index + 1) + ": " + entry.san
-                );
-            }
-
-            moves.push(
-                move.from + move.to + (move.promotion || "")
-            );
-
-            const moveLabel =
-                moveNumber +
-                (whiteMoved ? ". " : "... ") +
-                move.san;
-
-            statusBox.textContent =
-                "Comparing " + moveLabel +
-                " (" + (index + 1) + "/" + entries.length + ")...";
-
-            let result = null;
-            let ours;
-
-            if (game.isCheckmate()) {
-                ours = {
-                    kind: "terminal",
-                    text: whiteMoved ? "White mates" : "Black mates"
-                };
-
-            } else if (game.isDraw()) {
-                ours = { kind: "cp", value: 0 };
-
-            } else {
-                result = await search(rootFen, moves);
-                checkStopped();
-
-                // UCI score is for the side to move.
-                // Convert to White's perspective.
-                const sign = game.turn() === "w" ? 1 : -1;
-
-                ours = {
-                    kind: result.kind,
-                    value: result.value * sign
-                };
-            }
-
-            const difference = appendRow(
-                moveLabel,
-                entry.reference,
-                ours,
-                game.fen(),
-                result
-            );
-
-            if (difference !== null) {
-                compared++;
-                totalAbsoluteDifference += Math.abs(difference);
-
-                if (Math.abs(difference) > largestDifference) {
-                    largestDifference = Math.abs(difference);
-                    largestMove = moveLabel;
-                }
-            }
-
-            summaryBox.textContent = compared
-                ? "Numerical positions compared: " + compared +
-                  " | Mean absolute difference: " +
-                  (totalAbsoluteDifference / compared).toFixed(2) +
-                  " | Largest absolute difference: " +
-                  largestDifference.toFixed(2) +
-                  " at " + largestMove
-                : "No numerical score pairs compared yet.";
-
-            await new Promise(function(resolve) {
-                setTimeout(resolve, 0);
-            });
-        }
-
-        statusBox.textContent = "Comparison complete.";
-
-    } catch (error) {
-        statusBox.textContent = stopped
-            ? "Stopped. Completed rows remain visible."
-            : "Error: " + error.message;
-
-    } finally {
-        destroyEngine();
-        running = false;
-        compareButton.disabled = false;
-        stopButton.disabled = true;
+        engineBox.textContent =
+            "Engine: " +
+            line.slice(8);
     }
-});
 
-stopButton.addEventListener("click", function() {
-    stopped = true;
-    destroyEngine("Stopped.");
-    statusBox.textContent = "Stopping...";
-});
-</script>
 
-</body>
-</html>
+    /*
+        UCI INITIALISATION
+    */
+
+    if (handshake) {
+
+        if (
+            line === "uciok" &&
+            handshake.stage ===
+                "uci"
+        ) {
+
+            handshake.stage =
+                "ready";
+
+
+            worker.postMessage(
+                "setoption name Threads value 1"
+            );
+
+
+            worker.postMessage(
+                "setoption name Hash value " +
+                HASH_MB
+            );
+
+
+            worker.postMessage(
+                "setoption name MultiPV value " +
+                MULTIPV
+            );
+
+
+            worker.postMessage(
+                "isready"
+            );
+
+
+            return;
+        }
+
+
+        if (
+            line === "readyok" &&
+            handshake.stage ===
+                "ready"
+        ) {
+
+            const task =
+                handshake;
+
+
+            handshake =
+                null;
+
+
+            clearTimeout(
+                task.timer
+            );
+
+
+            task.resolve();
+
+
+            return;
+        }
+    }
+
+
+    /*
+        NO ACTIVE SEARCH
+    */
+
+    if (!pending) {
+        return;
+    }
+
+
+    /*
+        ENGINE SEARCH INFO
+    */
+
+    if (
+        line.startsWith(
+            "info "
+        ) &&
+        line.includes(
+            " score "
+        ) &&
+        !/\b(lowerbound|upperbound)\b/.test(
+            line
+        )
+    ) {
+
+        const rankMatch =
+            line.match(
+                /\bmultipv\s+(\d+)/
+            );
+
+
+        const rank =
+            rankMatch
+                ? Number(
+                    rankMatch[1]
+                  )
+                : 1;
+
+
+        /*
+            We only use the primary
+            variation for the displayed
+            evaluation.
+        */
+
+        if (
+            rank === 1
+        ) {
+
+            const depthMatch =
+                line.match(
+                    /\bdepth\s+(\d+)/
+                );
+
+
+            const nodesMatch =
+                line.match(
+                    /\bnodes\s+(\d+)/
+                );
+
+
+            const cpMatch =
+                line.match(
+                    /\bscore cp (-?\d+)/
+                );
+
+
+            const mateMatch =
+                line.match(
+                    /\bscore mate (-?\d+)/
+                );
+
+
+            const timeMatch =
+                line.match(
+                    /\btime\s+(\d+)/
+                );
+
+
+            const pvMatch =
+                line.match(
+                    /\bpv\s+(.+)$/
+                );
+
+
+            const depth =
+                depthMatch
+                    ? Number(
+                        depthMatch[1]
+                      )
+            
