@@ -1,4 +1,4 @@
-v1.02
+v1.03
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,7 +93,7 @@ pre {
     <th>Lichess reference</th>
     <th>Our Stockfish</th>
     <th>Difference</th>
-    <th>Depth</th>
+    <th>Reached Depth</th>
     <th>Engine time</th>
     <th>Diagnostics</th>
 </tr>
@@ -105,7 +105,7 @@ pre {
 <script>
 "use strict";
 
-const DEPTH = 14;
+const NODES = 1000000;
 const MULTIPV = 2;
 const ENGINE_PATH = "./Assets/stockfish-19-single.js";
 
@@ -353,7 +353,7 @@ function handleLine(line) {
             handshake.stage = "ready";
 
             worker.postMessage("setoption name Threads value 1");
-            worker.postMessage("setoption name Hash value 32");
+            worker.postMessage("setoption name Hash value 512");
             worker.postMessage(
                 "setoption name MultiPV value " + MULTIPV
             );
@@ -471,7 +471,7 @@ function search(rootFen, moves) {
             (moves.length ? " moves " + moves.join(" ") : "")
         );
 
-        worker.postMessage("go depth " + DEPTH);
+        worker.postMessage("go depth " + NODES);
     });
 }
 
