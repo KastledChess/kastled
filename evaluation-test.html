@@ -1,4 +1,4 @@
-v1.03
+v1.04
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -471,7 +471,7 @@ function search(rootFen, moves) {
             (moves.length ? " moves " + moves.join(" ") : "")
         );
 
-        worker.postMessage("go depth " + NODES);
+        worker.postMessage("go NODES " + NODES);
     });
 }
 
