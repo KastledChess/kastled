@@ -23,7 +23,7 @@ body{font-family:Arial,sans-serif;max-width:1400px;margin:30px auto;padding:0 18
 <div class="box scroll"><table><thead><tr><th>Move</th><th>Lichess reference</th><th>Our Stockfish</th><th>Difference</th><th>Depth</th><th>Nodes</th><th>Engine time</th><th>Diagnostics</th></tr></thead><tbody id="rows"></tbody></table></div>
 <script>
 "use strict";
-const NODES=1000000,MULTIPV=2,HASH_MB=512;
+const NODES=100000,MULTIPV=2,HASH_MB=512;
 const ENGINE_PATH="./Assets/stockfish-19-single.js";
 const CHESS_SOURCES=["https://esm.sh/chess.js@1.4.0","https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"];
 const pgnBox=document.getElementById("pgn"),compareButton=document.getElementById("compare"),stopButton=document.getElementById("stop"),statusBox=document.getElementById("status"),engineBox=document.getElementById("engine"),summaryBox=document.getElementById("summary"),rowsBox=document.getElementById("rows");
