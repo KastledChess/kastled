@@ -1,4 +1,4 @@
-v1.05
+v1.06
 
 <!DOCTYPE html>
 <html lang="en">
@@ -190,18 +190,6 @@ const CLASSIFICATIONS = [
     "Book", "Inaccuracy", "Mistake", "Miss", "Blunder"
 ];
 
-const CLASSIFICATION_SCORE = {
-    Brilliant: 100,
-    Great: 100,
-    Best: 100,
-    Excellent: 92,
-    Good: 80,
-    Book: 100,
-    Inaccuracy: 60,
-    Mistake: 30,
-    Miss: 15,
-    Blunder: 0
-};
 
 function updateStats() {
     statsElement.textContent =
@@ -344,7 +332,103 @@ function normaliseOpening(opening) {
 }
 
 function expectedPoints(cp) {
-    return 1 / (1 + Math.exp(-0.00368208 * cp));
+    return 1 / (1 + Math.exp(-0.00368208 * Math.max(-1000, Math.min(1000, cp))));
+}
+
+function winPercent(cp) {
+    return expectedPoints(cp) * 100;
+}
+
+function moveAccuracy(winPercentBefore, winPercentAfter) {
+    if (winPercentAfter >= winPercentBefore) return 100;
+
+    const loss = winPercentBefore - winPercentAfter;
+    const accuracy =
+        103.1668 * Math.exp(-0.04354 * loss) - 3.1669;
+
+    return Math.max(0, Math.min(100, accuracy));
+}
+
+function standardDeviation(values) {
+    if (!values.length) return 0;
+    const mean = values.reduce(function(sum, value) {
+        return sum + value;
+    }, 0) / values.length;
+    const variance = values.reduce(function(sum, value) {
+        const difference = value - mean;
+        return sum + difference * difference;
+    }, 0) / values.length;
+    return Math.sqrt(variance);
+}
+
+function gameAccuracy(rows, color) {
+    const analysedRows = rows.filter(function(row) {
+        return Number.isFinite(row.accuracy) &&
+            Number.isFinite(row.whiteWinBefore) &&
+            Number.isFinite(row.whiteWinAfter);
+    });
+
+    if (!analysedRows.length) return null;
+
+    const allWinPercents = [analysedRows[0].whiteWinBefore].concat(
+        analysedRows.map(function(row) {
+            return row.whiteWinAfter;
+        })
+    );
+
+    const windowSize = Math.max(
+        2,
+        Math.min(8, Math.floor(analysedRows.length / 10))
+    );
+    const actualWindowSize = Math.min(windowSize, allWinPercents.length);
+    const windows = [];
+
+    for (let index = 0; index < actualWindowSize - 2; index++) {
+        windows.push(allWinPercents.slice(0, actualWindowSize));
+    }
+
+    for (
+        let index = 0;
+        index <= allWinPercents.length - actualWindowSize;
+        index++
+    ) {
+        windows.push(
+            allWinPercents.slice(index, index + actualWindowSize)
+        );
+    }
+
+    const weighted = [];
+
+    for (let index = 0; index < analysedRows.length; index++) {
+        const row = analysedRows[index];
+        if (row.color !== color) continue;
+
+        const volatility = Math.max(
+            0.5,
+            Math.min(12, standardDeviation(windows[index] || []))
+        );
+
+        weighted.push({ accuracy: row.accuracy, weight: volatility });
+    }
+
+    if (!weighted.length) return null;
+
+    const weightTotal = weighted.reduce(function(sum, value) {
+        return sum + value.weight;
+    }, 0);
+    const weightedMean = weighted.reduce(function(sum, value) {
+        return sum + value.accuracy * value.weight;
+    }, 0) / weightTotal;
+
+    const hasZero = weighted.some(function(value) {
+        return value.accuracy <= 0;
+    });
+    const harmonicMean = hasZero ? 0 : weighted.length /
+        weighted.reduce(function(sum, value) {
+            return sum + 1 / value.accuracy;
+        }, 0);
+
+    return (weightedMean + harmonicMean) / 2;
 }
 
 function formatEval(cp) {
@@ -632,7 +716,7 @@ async function initialiseStockfish() {
                 stage: "uci",
                 timer: setTimeout(function() {
                     resetEngine("Stockfish did not become ready.");
-                }, 60000)
+                }, 180000)
             };
 
             worker.postMessage("uci");
@@ -773,8 +857,8 @@ function createGameView(number, history) {
     note.textContent =
         "Full Stockfish 19, 100,000 nodes per position, MultiPV 2. " +
         "Evaluation is from White's perspective. " +
-        "Special labels use test heuristics. " +
-        "Test score is a category-score average, not official accuracy.";
+        "Move and game accuracy use the published Lichess formula. " +
+        "Book moves are excluded from accuracy until engine evaluated.";
 
     box.appendChild(note);
 
@@ -786,7 +870,7 @@ function createGameView(number, history) {
     const headerRow = document.createElement("tr");
 
     for (const label of [
-        "Ply", "Move", "Classification", "Evaluation",
+        "Ply", "Move", "Classification", "Accuracy", "Evaluation",
         "Best move", "EP loss", "Master games", "Share", "Opening"
     ]) {
         const th = document.createElement("th");
@@ -812,7 +896,6 @@ function createGameView(number, history) {
 
 function updateSummary(view) {
     const counts = { w: {}, b: {} };
-    const scores = { w: [], b: [] };
 
     for (const name of CLASSIFICATIONS) {
         counts.w[name] = 0;
@@ -821,9 +904,6 @@ function updateSummary(view) {
 
     for (const row of view.rows) {
         counts[row.color][row.classification]++;
-        scores[row.color].push(
-            CLASSIFICATION_SCORE[row.classification]
-        );
     }
 
     view.summary.replaceChildren();
@@ -838,19 +918,11 @@ function updateSummary(view) {
     item("Classification", "summary-header");
     item("White", "summary-header");
     item("Black", "summary-header");
-    item("Test score");
+    item("Accuracy");
 
     for (const color of ["w", "b"]) {
-        const values = scores[color];
-
-        item(values.length
-            ? (
-                values.reduce(function(a, b) {
-                    return a + b;
-                }, 0) / values.length
-              ).toFixed(1) + "%"
-            : "-"
-        );
+        const accuracy = gameAccuracy(view.rows, color);
+        item(accuracy === null ? "-" : accuracy.toFixed(1) + "%");
     }
 
     for (const name of CLASSIFICATIONS) {
@@ -867,6 +939,12 @@ async function appendResult(view, row) {
     addCell(tr, row.ply);
     addCell(tr, row.san + " (" + row.uci + ")");
     addCell(tr, row.classification, row.classification);
+    addCell(
+        tr,
+        Number.isFinite(row.accuracy)
+            ? row.accuracy.toFixed(1) + "%"
+            : "-"
+    );
     addCell(tr, row.mate || formatEval(row.evalCp));
     addCell(tr, row.bestMove || "-");
     addCell(tr, row.epLoss === null ? "-" : row.epLoss.toFixed(3));
@@ -1087,6 +1165,12 @@ async function analyseGame(pgn, number) {
         row.bestMove = beforeResult.bestMove;
         row.epLoss = epLoss;
         row.opening = latestOpening;
+        row.whiteWinBefore = winPercent(beforeWhiteCp);
+        row.whiteWinAfter = winPercent(afterWhiteCp);
+        row.accuracy = moveAccuracy(
+            moverBefore * 100,
+            moverAfter * 100
+        );
 
         moves.push(playedUci);
         await appendResult(view, row);
@@ -1119,6 +1203,12 @@ analyseButton.addEventListener("click", async function() {
     try {
         statusElement.textContent = "Checking your Kastled login...";
         await getSession();
+
+        // Warm Stockfish in parallel while the parser and opening book run.
+        const engineWarmup = initialiseStockfish();
+        engineWarmup.catch(function() {
+            // analysePosition will surface the same failure if the engine is needed.
+        });
 
         await loadChessParser();
         checkStopped();
