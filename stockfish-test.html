@@ -1,4 +1,4 @@
-v1.04
+v1.05
 
 <!DOCTYPE html>
 <html lang="en">
@@ -87,7 +87,7 @@ a { color: #1565c0; }
 <div class="box">
     <p>
         Lichess opening checks through Supabase, followed by
-        Stockfish 19 Lite. Results appear progressively.
+        Full Stockfish 19. Results appear progressively.
     </p>
 
     <p class="notice">
@@ -148,9 +148,10 @@ const SUPABASE_PUBLISHABLE_KEY =
 
 const FUNCTION_NAME = "lichess-opening";
 
-const STOCKFISH_DEPTH = 12;
+const STOCKFISH_NODES = 100000;
+const STOCKFISH_HASH_MB = 512;
 const STOCKFISH_URL =
-    "./Assets/stockfish-19-lite-single.js";
+    "./Assets/stockfish-19-single.js";
 
 const PARSER_SOURCES = [
     "https://esm.sh/chess.js@1.4.0",
@@ -518,7 +519,9 @@ function handleEngineLine(line) {
             readyWaiter.stage = "ready";
 
             worker.postMessage("setoption name Threads value 1");
-            worker.postMessage("setoption name Hash value 32");
+            worker.postMessage(
+                "setoption name Hash value " + STOCKFISH_HASH_MB
+            );
             worker.postMessage("setoption name MultiPV value 2");
             worker.postMessage("isready");
             return;
@@ -601,7 +604,7 @@ async function initialiseStockfish() {
     if (engineInitialisation) return engineInitialisation;
 
     engineInitialisation = (async function() {
-        statusElement.textContent = "Loading Stockfish 19 Lite...";
+        statusElement.textContent = "Loading full Stockfish 19...";
 
         worker = new Worker(
             new URL(STOCKFISH_URL, document.baseURI).href
@@ -649,7 +652,7 @@ async function analysePosition(rootFen, moves) {
 
     const key =
         "SF19|" + rootFen + "|" + moves.join(" ") +
-        "|depth=" + STOCKFISH_DEPTH + "|multipv=2";
+        "|nodes=" + STOCKFISH_NODES + "|multipv=2";
 
     if (engineCache.has(key)) {
         engineCacheHits++;
@@ -674,7 +677,7 @@ async function analysePosition(rootFen, moves) {
             lines: new Map(),
             timer: setTimeout(function() {
                 resetEngine("Stockfish search timed out.");
-            }, 60000)
+            }, 180000)
         };
 
         worker.postMessage(
@@ -682,7 +685,7 @@ async function analysePosition(rootFen, moves) {
             (moves.length ? " moves " + moves.join(" ") : "")
         );
 
-        worker.postMessage("go depth " + STOCKFISH_DEPTH);
+        worker.postMessage("go nodes " + STOCKFISH_NODES);
     });
 
     checkStopped();
@@ -768,7 +771,7 @@ function createGameView(number, history) {
     note.className = "small";
 
     note.textContent =
-        "Stockfish 19 Lite, depth 12, MultiPV 2. " +
+        "Full Stockfish 19, 100,000 nodes per position, MultiPV 2. " +
         "Evaluation is from White's perspective. " +
         "Special labels use test heuristics. " +
         "Test score is a category-score average, not official accuracy.";
