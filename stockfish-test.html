@@ -1,4 +1,4 @@
-v1.06
+v1.07
 
 <!DOCTYPE html>
 <html lang="en">
@@ -339,6 +339,22 @@ function winPercent(cp) {
     return expectedPoints(cp) * 100;
 }
 
+function expectedScoreFromWdl(wdl) {
+    if (!wdl) return null;
+    const total = wdl.wins + wdl.draws + wdl.losses;
+    return total ? (wdl.wins + 0.5 * wdl.draws) / total : null;
+}
+
+function classifyOrdinaryLoss(loss) {
+    if (!Number.isFinite(loss)) return "-";
+    if (loss <= 0.005) return "Best";
+    if (loss <= 0.026) return "Excellent";
+    if (loss <= 0.045) return "Good";
+    if (loss <= 0.115) return "Inaccuracy";
+    if (loss <= 0.220) return "Mistake";
+    return "Blunder";
+}
+
 function moveAccuracy(winPercentBefore, winPercentAfter) {
     if (winPercentAfter >= winPercentBefore) return 100;
 
@@ -607,6 +623,7 @@ function handleEngineLine(line) {
                 "setoption name Hash value " + STOCKFISH_HASH_MB
             );
             worker.postMessage("setoption name MultiPV value 2");
+            worker.postMessage("setoption name UCI_ShowWDL value true");
             worker.postMessage("isready");
             return;
         }
@@ -636,6 +653,7 @@ function handleEngineLine(line) {
         const multipvMatch = line.match(/\bmultipv\s+(\d+)/);
         const cpMatch = line.match(/\bscore cp (-?\d+)/);
         const mateMatch = line.match(/\bscore mate (-?\d+)/);
+        const wdlMatch = line.match(/\bwdl\s+(\d+)\s+(\d+)\s+(\d+)/);
         const pvMatch = line.match(/\bpv\s+(.+)$/);
 
         const depth = depthMatch ? Number(depthMatch[1]) : 0;
@@ -644,6 +662,11 @@ function handleEngineLine(line) {
 
         let cp = null;
         let mate = null;
+        const wdl = wdlMatch ? {
+            wins: Number(wdlMatch[1]),
+            draws: Number(wdlMatch[2]),
+            losses: Number(wdlMatch[3])
+        } : null;
 
         if (cpMatch) {
             cp = Number(cpMatch[1]);
@@ -657,7 +680,7 @@ function handleEngineLine(line) {
 
             if (!existing || depth >= existing.depth) {
                 search.lines.set(multipv, {
-                    depth, cp, mate, pv
+                    depth, cp, mate, wdl, pv
                 });
             }
         }
@@ -736,7 +759,7 @@ async function analysePosition(rootFen, moves) {
 
     const key =
         "SF19|" + rootFen + "|" + moves.join(" ") +
-        "|nodes=" + STOCKFISH_NODES + "|multipv=2";
+        "|nodes=" + STOCKFISH_NODES + "|multipv=2|wdl=1";
 
     if (engineCache.has(key)) {
         engineCacheHits++;
@@ -858,7 +881,8 @@ function createGameView(number, history) {
         "Full Stockfish 19, 100,000 nodes per position, MultiPV 2. " +
         "Evaluation is from White's perspective. " +
         "Move and game accuracy use the published Lichess formula. " +
-        "Book moves are excluded from accuracy until engine evaluated.";
+        "Diagnostic columns compare current EP loss with native Stockfish WDL. " +
+        "Book moves keep the Book label but are also engine evaluated.";
 
     box.appendChild(note);
 
@@ -870,8 +894,10 @@ function createGameView(number, history) {
     const headerRow = document.createElement("tr");
 
     for (const label of [
-        "Ply", "Move", "Classification", "Accuracy", "Evaluation",
-        "Best move", "EP loss", "Master games", "Share", "Opening"
+        "Ply", "Move", "Final class", "Ordinary EP class", "WDL class",
+        "Accuracy", "CP before", "CP after", "Evaluation", "Best move",
+        "EP loss", "WDL loss", "WDL before", "WDL after",
+        "Master games", "Share", "Opening"
     ]) {
         const th = document.createElement("th");
         th.textContent = label;
@@ -939,15 +965,22 @@ async function appendResult(view, row) {
     addCell(tr, row.ply);
     addCell(tr, row.san + " (" + row.uci + ")");
     addCell(tr, row.classification, row.classification);
+    addCell(tr, row.ordinaryClassification || "-", row.ordinaryClassification);
+    addCell(tr, row.wdlClassification || "-", row.wdlClassification);
     addCell(
         tr,
         Number.isFinite(row.accuracy)
             ? row.accuracy.toFixed(1) + "%"
             : "-"
     );
+    addCell(tr, Number.isFinite(row.beforeWhiteCp) ? formatEval(row.beforeWhiteCp) : "-");
+    addCell(tr, Number.isFinite(row.afterWhiteCp) ? formatEval(row.afterWhiteCp) : "-");
     addCell(tr, row.mate || formatEval(row.evalCp));
     addCell(tr, row.bestMove || "-");
     addCell(tr, row.epLoss === null ? "-" : row.epLoss.toFixed(3));
+    addCell(tr, row.wdlLoss === null ? "-" : row.wdlLoss.toFixed(3));
+    addCell(tr, row.wdlBefore || "-");
+    addCell(tr, row.wdlAfter || "-");
     addCell(tr, row.masterGames === null
         ? "-" : row.masterGames.toLocaleString());
     addCell(tr, row.share === null
@@ -1001,6 +1034,7 @@ async function analyseGame(pgn, number) {
         const checkmate = replay.isCheckmate();
         const drawn = !checkmate && replay.isDraw();
 
+        let bookClassification = false;
         const row = {
             ply: index + 1,
             color: played.color,
@@ -1013,6 +1047,13 @@ async function analyseGame(pgn, number) {
             evalCp: null,
             bestMove: "",
             epLoss: null,
+            wdlLoss: null,
+            wdlBefore: "",
+            wdlAfter: "",
+            ordinaryClassification: "",
+            wdlClassification: "",
+            beforeWhiteCp: null,
+            afterWhiteCp: null,
             mate: ""
         };
 
@@ -1062,13 +1103,12 @@ async function analyseGame(pgn, number) {
                         ? row.masterGames / total * 100
                         : 0;
 
-                    moves.push(playedUci);
-                    await appendResult(view, row);
-                    continue;
+                    bookClassification = true;
+                    stillInBook = true;
                 }
             }
 
-            stillInBook = false;
+            if (!bookClassification) stillInBook = false;
         }
 
         statusElement.textContent =
@@ -1087,6 +1127,7 @@ async function analyseGame(pgn, number) {
 
         let afterWhiteCp;
         let afterWhiteExpected;
+        let afterLine;
 
         if (checkmate) {
             afterWhiteCp = whiteMoved ? 100000 : -100000;
@@ -1101,7 +1142,7 @@ async function analyseGame(pgn, number) {
             const afterResult =
                 await analysePosition(rootFen, afterMoves);
 
-            const afterLine = afterResult.lines.get(1);
+            afterLine = afterResult.lines.get(1);
 
             afterWhiteCp =
                 whiteScore(afterLine.cp, !whiteMoved);
@@ -1133,6 +1174,24 @@ async function analyseGame(pgn, number) {
         const epLoss =
             Math.max(0, moverBefore - moverAfter);
 
+        const beforeWdlScore = expectedScoreFromWdl(first.wdl);
+        let afterWdlScore = null;
+        let afterWdl = null;
+        if (!checkmate && !drawn && typeof afterLine !== "undefined") {
+            afterWdl = afterLine.wdl;
+            const opponentAfterScore = expectedScoreFromWdl(afterWdl);
+            afterWdlScore = opponentAfterScore === null
+                ? null
+                : 1 - opponentAfterScore;
+        } else if (checkmate) {
+            afterWdlScore = 1;
+        } else if (drawn) {
+            afterWdlScore = 0.5;
+        }
+        const wdlLoss = beforeWdlScore === null || afterWdlScore === null
+            ? null
+            : Math.max(0, beforeWdlScore - afterWdlScore);
+
         let secondBestGap = 0;
 
         if (second) {
@@ -1150,7 +1209,7 @@ async function analyseGame(pgn, number) {
             );
         }
 
-        row.classification = classifyEngineMove({
+        const heuristicClassification = classifyEngineMove({
             playedUci,
             bestMove: beforeResult.bestMove,
             secondBestGap,
@@ -1160,10 +1219,24 @@ async function analyseGame(pgn, number) {
             materialChangeForMover,
             movingPiece: played.piece
         });
+        row.ordinaryClassification = classifyOrdinaryLoss(epLoss);
+        row.wdlClassification = classifyOrdinaryLoss(wdlLoss);
+        row.classification = bookClassification
+            ? "Book"
+            : heuristicClassification;
 
         row.evalCp = afterWhiteCp;
+        row.beforeWhiteCp = beforeWhiteCp;
+        row.afterWhiteCp = afterWhiteCp;
         row.bestMove = beforeResult.bestMove;
         row.epLoss = epLoss;
+        row.wdlLoss = wdlLoss;
+        row.wdlBefore = first.wdl
+            ? first.wdl.wins + "/" + first.wdl.draws + "/" + first.wdl.losses
+            : "";
+        row.wdlAfter = afterWdl
+            ? afterWdl.wins + "/" + afterWdl.draws + "/" + afterWdl.losses
+            : (checkmate ? "mate" : drawn ? "draw" : "");
         row.opening = latestOpening;
         row.whiteWinBefore = winPercent(beforeWhiteCp);
         row.whiteWinAfter = winPercent(afterWhiteCp);
