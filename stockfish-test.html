@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chess Move Classification Tester v1.10</title>
+<title>Chess Move Classification Tester v1.11</title>
 <style>
 body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}.box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}textarea{width:100%;box-sizing:border-box;min-height:220px;padding:12px;margin:8px 0 15px;font-family:monospace;resize:vertical}button{padding:11px 18px;margin:12px 7px 0 0;font-size:15px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;margin-top:15px;font-size:12px}th,td{border-bottom:1px solid #ddd;padding:7px;text-align:left;vertical-align:top}th{background:#eee;position:sticky;top:0;z-index:1}.Brilliant{color:#0d9488;font-weight:bold}.Great{color:#2563eb;font-weight:bold}.Best{color:#10b981;font-weight:bold}.Excellent{color:#65a30d;font-weight:bold}.Good{color:#475569;font-weight:bold}.Inaccuracy{color:#a17a00;font-weight:bold}.Mistake{color:#f97316;font-weight:bold}.Blunder{color:#dc2626;font-weight:bold}.badge{display:inline-block;padding:2px 6px;margin:1px 3px 1px 0;border-radius:999px;background:#eee;font-size:11px}.badge-book{background:#fef3c7;color:#92400e}.badge-warning{background:#fee2e2;color:#991b1b}.notice{background:#eef5ff;padding:12px;border-radius:7px}.warning{background:#fff4e5;padding:12px;border-radius:7px}.status{margin-top:12px;font-weight:bold}.stats,.small{color:#555;margin-top:8px}.summary{display:grid;grid-template-columns:180px 1fr 1fr;max-width:550px;gap:7px;margin-top:15px}.summary>div{padding:5px;border-bottom:1px solid #eee}.summary-header{font-weight:bold;background:#eee}.audit-ok{color:#15803d;font-weight:bold}.audit-bad{color:#b91c1c;font-weight:bold}.confidence-low{color:#b91c1c;font-weight:bold}details{max-width:720px}pre{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#1565c0}
 </style>
 </head>
 <body>
-<h1>Chess Move Classification Tester v1.10</h1>
+<h1>Chess Move Classification Tester v1.11</h1>
 <div class="box">
 <p>Diagnostic build comparing Stockfish's best move and the played move from the same pre-move position.</p>
 <p class="notice">Primary searches: 100,000 nodes, MultiPV 1, one thread, 128 MB hash, UCI_ShowWDL enabled. Hash is cleared before each independent search. Bound-only results are retried at 200,000 nodes.</p>
-<p class="warning">Book is a badge, not a quality grade. Every move is analysed. Great and Brilliant awards remain disabled until the core loss model is validated.</p>
+<p class="warning">Book is a badge, not a quality grade. Every move is analysed and contributes to continuous move and game accuracy. Great and Brilliant awards remain disabled until the core loss model is validated.</p>
 <label for="pgnInput"><strong>PGNs</strong></label>
 <textarea id="pgnInput" placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'></textarea>
 <button id="analyseButton" type="button">Analyse PGNs</button>
@@ -34,6 +34,7 @@ const PRIMARY_NODES=100000;
 const RETRY_NODES=200000;
 const MULTIPV=1;
 const HASH_MB=128;
+const ACCURACY_DECAY=0.9155;
 const STOCKFISH_URL="./Assets/stockfish-19-single.js";
 const PARSER_SOURCES=["https://esm.sh/chess.js@1.4.0","https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"];
 const QUALITY_CLASSES=["Brilliant","Great","Best","Excellent","Good","Inaccuracy","Mistake","Blunder"];
@@ -114,6 +115,16 @@ function rootLoss(best,played){const bestExpected=expectedFromWdl(best.wdl),play
   else{mateState="mixedScore"}
   return{cpLoss,wdlLoss,bestExpected,playedExpected,mateState,badges}
 }
+function moveAccuracy({playedIsBest,loss}){
+  if(playedIsBest||loss.mateState==="bothForceMate")return 100;
+  if(loss.mateState==="missedForcedMate"||loss.mateState==="allowedForcedMate")return 0;
+  if(typeof loss.cpLoss==="number"&&Number.isFinite(loss.cpLoss)){
+    const pawnLoss=Math.max(0,loss.cpLoss)/100;
+    return Math.max(0,Math.min(100,100*Math.exp(-ACCURACY_DECAY*pawnLoss)));
+  }
+  if(loss.mateState==="bothLoseByMate")return 100;
+  return null;
+}
 function classifyMove({playedIsBest,loss,best,played}){
   const badges=[...loss.badges];
   if(loss.mateState==="missedForcedMate"||loss.mateState==="allowedForcedMate")return{quality:"Blunder",badges};
@@ -132,9 +143,9 @@ function classifyMove({playedIsBest,loss,best,played}){
 
 function addCell(parent,value,className=""){const cell=document.createElement("td");cell.textContent=value;if(className)cell.className=className;parent.appendChild(cell);return cell}
 function addBadges(cell,badges){for(const badge of badges){const span=document.createElement("span");span.className="badge "+(badge==="Book"?"badge-book":"");span.textContent=badge;cell.appendChild(span)}}
-function createGameView(number,history){const box=document.createElement("div");box.className="box";const title=document.createElement("h2");title.textContent="Game "+number;box.appendChild(title);const link=document.createElement("a");link.href="https://lichess.org/analysis/pgn/"+encodeURIComponent(history.map(move=>move.san).join("_"));link.target="_blank";link.rel="noopener noreferrer";link.textContent="Open game in Lichess Analysis";box.appendChild(link);const note=document.createElement("p");note.className="small";note.textContent="Stockfish 19 diagnostic: unrestricted root versus forced played-move root, 100,000 nodes each, MultiPV 1, one thread, 128 MB hash.";box.appendChild(note);const wrap=document.createElement("div");wrap.className="table-wrap";const table=document.createElement("table"),head=document.createElement("thead"),headerRow=document.createElement("tr");for(const label of["Ply","Move","Quality","Badges","After eval","Best move","Best root","Played root","CP loss","WDL loss","Search confidence","FEN audit","Master games","Share","Opening","Diagnostics"]){const th=document.createElement("th");th.textContent=label;headerRow.appendChild(th)}head.appendChild(headerRow);table.appendChild(head);const tbody=document.createElement("tbody");table.appendChild(tbody);wrap.appendChild(table);box.appendChild(wrap);const summary=document.createElement("div");summary.className="summary";box.appendChild(summary);resultsElement.appendChild(box);return{tbody,summary,rows:[]}}
-function updateSummary(view){const counts={w:{},b:{}};for(const name of QUALITY_CLASSES){counts.w[name]=0;counts.b[name]=0}for(const row of view.rows)counts[row.color][row.quality]++;view.summary.replaceChildren();const item=(text,cls="")=>{const div=document.createElement("div");div.textContent=text;if(cls)div.className=cls;view.summary.appendChild(div)};item("Quality","summary-header");item("White","summary-header");item("Black","summary-header");for(const name of QUALITY_CLASSES){item(name,name);item(counts.w[name]);item(counts.b[name])}}
-async function appendResult(view,row){view.rows.push(row);const tr=document.createElement("tr");addCell(tr,row.ply);addCell(tr,`${row.san} (${row.uci})`);addCell(tr,row.quality,row.quality);const badgeCell=addCell(tr,"");addBadges(badgeCell,row.badges);addCell(tr,row.afterEval);addCell(tr,row.bestMove||"-");addCell(tr,row.bestRoot);addCell(tr,row.playedRoot);addCell(tr,row.cpLoss===null?"-":(row.cpLoss/100).toFixed(2));addCell(tr,row.wdlLoss===null?"-":row.wdlLoss.toFixed(3));addCell(tr,row.confidence,row.confidence==="Exact"?"":"confidence-low");addCell(tr,row.audit?"PASS":"FAIL",row.audit?"audit-ok":"audit-bad");addCell(tr,row.masterGames===null?"-":row.masterGames.toLocaleString());addCell(tr,row.share===null?"-":row.share.toFixed(2)+"%");addCell(tr,row.opening?(row.opening.eco+" "+row.opening.name).trim():"-");const diagnosticCell=addCell(tr,"");const details=document.createElement("details"),summary=document.createElement("summary"),pre=document.createElement("pre");summary.textContent="Engine details";pre.textContent=row.diagnostic;details.append(summary,pre);diagnosticCell.append(details);view.tbody.appendChild(tr);updateSummary(view);updateStats();await new Promise(resolve=>setTimeout(resolve,0))}
+function createGameView(number,history){const box=document.createElement("div");box.className="box";const title=document.createElement("h2");title.textContent="Game "+number;box.appendChild(title);const link=document.createElement("a");link.href="https://lichess.org/analysis/pgn/"+encodeURIComponent(history.map(move=>move.san).join("_"));link.target="_blank";link.rel="noopener noreferrer";link.textContent="Open game in Lichess Analysis";box.appendChild(link);const note=document.createElement("p");note.className="small";note.textContent="Stockfish 19 diagnostic: unrestricted root versus forced played-move root, 100,000 nodes each, MultiPV 1, one thread, 128 MB hash.";box.appendChild(note);const wrap=document.createElement("div");wrap.className="table-wrap";const table=document.createElement("table"),head=document.createElement("thead"),headerRow=document.createElement("tr");for(const label of["Ply","Move","Move accuracy","Quality","Badges","After eval","Best move","Best root","Played root","CP loss","WDL loss","Search confidence","FEN audit","Master games","Share","Opening","Diagnostics"]){const th=document.createElement("th");th.textContent=label;headerRow.appendChild(th)}head.appendChild(headerRow);table.appendChild(head);const tbody=document.createElement("tbody");table.appendChild(tbody);wrap.appendChild(table);box.appendChild(wrap);const summary=document.createElement("div");summary.className="summary";box.appendChild(summary);resultsElement.appendChild(box);return{tbody,summary,rows:[]}}
+function updateSummary(view){const counts={w:{},b:{}},accuracies={w:[],b:[]};for(const name of QUALITY_CLASSES){counts.w[name]=0;counts.b[name]=0}for(const row of view.rows){counts[row.color][row.quality]++;if(typeof row.moveAccuracy==="number")accuracies[row.color].push(row.moveAccuracy)}view.summary.replaceChildren();const item=(text,cls="")=>{const div=document.createElement("div");div.textContent=text;if(cls)div.className=cls;view.summary.appendChild(div)};const average=color=>accuracies[color].length?accuracies[color].reduce((total,value)=>total+value,0)/accuracies[color].length:null;item("Metric","summary-header");item("White","summary-header");item("Black","summary-header");item("Accuracy");for(const color of ["w","b"]){const value=average(color);item(value===null?"-":value.toFixed(1)+"%")}for(const name of QUALITY_CLASSES){item(name,name);item(counts.w[name]);item(counts.b[name])}}
+async function appendResult(view,row){view.rows.push(row);const tr=document.createElement("tr");addCell(tr,row.ply);addCell(tr,`${row.san} (${row.uci})`);addCell(tr,row.moveAccuracy===null?"-":row.moveAccuracy.toFixed(1)+"%");addCell(tr,row.quality,row.quality);const badgeCell=addCell(tr,"");addBadges(badgeCell,row.badges);addCell(tr,row.afterEval);addCell(tr,row.bestMove||"-");addCell(tr,row.bestRoot);addCell(tr,row.playedRoot);addCell(tr,row.cpLoss===null?"-":(row.cpLoss/100).toFixed(2));addCell(tr,row.wdlLoss===null?"-":row.wdlLoss.toFixed(3));addCell(tr,row.confidence,row.confidence==="Exact"?"":"confidence-low");addCell(tr,row.audit?"PASS":"FAIL",row.audit?"audit-ok":"audit-bad");addCell(tr,row.masterGames===null?"-":row.masterGames.toLocaleString());addCell(tr,row.share===null?"-":row.share.toFixed(2)+"%");addCell(tr,row.opening?(row.opening.eco+" "+row.opening.name).trim():"-");const diagnosticCell=addCell(tr,"");const details=document.createElement("details"),summary=document.createElement("summary"),pre=document.createElement("pre");summary.textContent="Engine details";pre.textContent=row.diagnostic;details.append(summary,pre);diagnosticCell.append(details);view.tbody.appendChild(tr);updateSummary(view);updateStats();await new Promise(resolve=>setTimeout(resolve,0))}
 
 async function analyseGame(pgn,number){const parsed=new Chess();parsed.loadPgn(pgn,{strict:false});const history=parsed.history({verbose:true});if(!history.length)throw new Error(`Game ${number} contains no moves.`);await startNewGame();const rootFen=history[0].before,replay=new Chess(rootFen),moves=[],view=createGameView(number,history);let stillInBook=true,latestOpening=null;
   for(let index=0;index<history.length;index++){
@@ -146,7 +157,7 @@ async function analyseGame(pgn,number){const parsed=new Chess();parsed.loadPgn(p
     const best=await runExactSearch({rootFen,moves,expectedFen:preFen});
     const playedIsBest=best.bestMove===playedUci;
     const forced=playedIsBest?best:await runExactSearch({rootFen,moves,expectedFen:preFen,searchMoves:[playedUci],audit:false});
-    const loss=rootLoss(best,forced),classification=classifyMove({playedIsBest,loss,best,played:forced});
+    const loss=rootLoss(best,forced),classification=classifyMove({playedIsBest,loss,best,played:forced}),accuracy=moveAccuracy({playedIsBest,loss});
     let afterResult=null,afterEval;
     if(checkmate)afterEval=whiteToMove?"+M0":"-M0";
     else if(drawn)afterEval="0.00";
@@ -160,10 +171,11 @@ async function analyseGame(pgn,number){const parsed=new Chess();parsed.loadPgn(p
       `Played search: ${forced.goCommand}\n${forced.raw}`,
       afterResult?`After-position display search: ${afterResult.goCommand}\nAfter FEN: ${afterResult.audit?.actual||afterFen}\n${afterResult.raw}`:`After position: ${checkmate?"checkmate":"draw"}`,
       `Loss: cp=${loss.cpLoss===null?"n/a":loss.cpLoss}, wdl=${loss.wdlLoss===null?"n/a":loss.wdlLoss.toFixed(3)}, mateState=${loss.mateState}`,
+      `Move accuracy: ${accuracy===null?"n/a":accuracy.toFixed(3)+"%"} using 100 * exp(-${ACCURACY_DECAY} * CP loss / 100)`,
       `NNUE: ${engineMetadata.nnueMessages.at(-1)||"No activation line captured"}`,
       `Critical errors: ${engineMetadata.criticalErrors.length}`
     ].join("\n\n");
-    await appendResult(view,{ply:index+1,color:played.color,san:played.san,uci:playedUci,quality:classification.quality,badges,afterEval,bestMove:best.bestMove,bestRoot:formatRootScore(best),playedRoot:formatRootScore(forced),cpLoss:loss.cpLoss,wdlLoss:loss.wdlLoss,confidence:exact?"Exact":"Bound result",audit:auditOk,masterGames,share,opening:latestOpening,diagnostic});
+    await appendResult(view,{ply:index+1,color:played.color,san:played.san,uci:playedUci,quality:classification.quality,moveAccuracy:accuracy,badges,afterEval,bestMove:best.bestMove,bestRoot:formatRootScore(best),playedRoot:formatRootScore(forced),cpLoss:loss.cpLoss,wdlLoss:loss.wdlLoss,confidence:exact?"Exact":"Bound result",audit:auditOk,masterGames,share,opening:latestOpening,diagnostic});
     moves.push(playedUci);
   }
 }
