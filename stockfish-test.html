@@ -3,27 +3,73 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chess Move Classification Tester v1.12.1</title>
+<title>Chess Move Classification Tester v1.12.2</title>
 <style>
-body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}.box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}textarea{width:100%;box-sizing:border-box;min-height:220px;padding:12px;margin:8px 0 15px;font-family:monospace;resize:vertical}button{padding:11px 18px;margin:12px 7px 0 0;font-size:15px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;margin-top:15px;font-size:12px}th,td{border-bottom:1px solid #ddd;padding:7px;text-align:left;vertical-align:top}th{background:#eee;position:sticky;top:0;z-index:1}.Book{color:#92400e;font-weight:bold}.Brilliant{color:#0d9488;font-weight:bold}.Great{color:#2563eb;font-weight:bold}.Best{color:#10b981;font-weight:bold}.Excellent{color:#65a30d;font-weight:bold}.Good{color:#475569;font-weight:bold}.Inaccuracy{color:#a17a00;font-weight:bold}.Mistake{color:#f97316;font-weight:bold}.Blunder{color:#dc2626;font-weight:bold}.badge{display:inline-block;padding:2px 6px;margin:1px 3px 1px 0;border-radius:999px;background:#eee;font-size:11px}.badge-book{background:#fef3c7;color:#92400e}.badge-warning{background:#fee2e2;color:#991b1b}.notice{background:#eef5ff;padding:12px;border-radius:7px}.warning{background:#fff4e5;padding:12px;border-radius:7px}.status{margin-top:12px;font-weight:bold}.stats,.small{color:#555;margin-top:8px}.summary{display:grid;grid-template-columns:180px 1fr 1fr;max-width:550px;gap:7px;margin-top:15px}.summary>div{padding:5px;border-bottom:1px solid #eee}.summary-header{font-weight:bold;background:#eee}.audit-ok{color:#15803d;font-weight:bold}.audit-bad{color:#b91c1c;font-weight:bold}.confidence-low{color:#b91c1c;font-weight:bold}details{max-width:720px}pre{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#1565c0}
+body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}
+.box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
+textarea{width:100%;box-sizing:border-box;min-height:220px;padding:12px;margin:8px 0 15px;font-family:monospace;resize:vertical}
+button{padding:11px 18px;margin:12px 7px 0 0;font-size:15px;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;margin-top:15px;font-size:12px}
+th,td{border-bottom:1px solid #ddd;padding:7px;text-align:left;vertical-align:top}
+th{background:#eee;position:sticky;top:0;z-index:1}
+.Book{color:#92400e;font-weight:bold}
+.Brilliant{color:#0d9488;font-weight:bold}
+.Great{color:#2563eb;font-weight:bold}
+.Best{color:#10b981;font-weight:bold}
+.Excellent{color:#65a30d;font-weight:bold}
+.Good{color:#475569;font-weight:bold}
+.Inaccuracy{color:#a17a00;font-weight:bold}
+.Mistake{color:#f97316;font-weight:bold}
+.Blunder{color:#dc2626;font-weight:bold}
+.badge{display:inline-block;padding:2px 6px;margin:1px 3px 1px 0;border-radius:999px;background:#eee;font-size:11px}
+.badge-book{background:#fef3c7;color:#92400e}
+.badge-warning{background:#fee2e2;color:#991b1b}
+.notice{background:#eef5ff;padding:12px;border-radius:7px}
+.warning{background:#fff4e5;padding:12px;border-radius:7px}
+.status{margin-top:12px;font-weight:bold}
+.stats,.small{color:#555;margin-top:8px}
+.summary{display:grid;grid-template-columns:180px 1fr 1fr;max-width:550px;gap:7px;margin-top:15px}
+.summary>div{padding:5px;border-bottom:1px solid #eee}
+.summary-header{font-weight:bold;background:#eee}
+.audit-ok{color:#15803d;font-weight:bold}
+.audit-bad{color:#b91c1c;font-weight:bold}
+.confidence-low{color:#b91c1c;font-weight:bold}
+details{max-width:720px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}
+a{color:#1565c0}
 </style>
 </head>
 <body>
-<h1>Chess Move Classification Tester v1.12.1</h1>
+
+<h1>Chess Move Classification Tester v1.12.2</h1>
+
 <div class="box">
 <p>Diagnostic build comparing Stockfish's best move and the played move from the same pre-move position.</p>
-<p class="notice">Primary searches: 100,000 nodes, MultiPV 1, one thread, 128 MB hash, UCI_ShowWDL enabled. Hash is cleared before each independent search. Bound-only results are retried at 200,000 nodes.</p>
-<p class="warning">Book moves are listed as Book in the move table and summary. Every move is still analysed and contributes to continuous move and game accuracy. Great and Brilliant awards remain disabled until the core loss model is validated.</p>
+
+<p class="notice">
+Primary searches: 100,000 nodes, MultiPV 1, one thread, 128 MB hash, UCI_ShowWDL enabled. Hash is cleared before each independent search. Bound-only results are retried at 200,000 nodes.
+</p>
+
+<p class="warning">
+Book moves are listed as Book in the move table and summary. Every move is still analysed and contributes to continuous move and game accuracy. Great and Brilliant awards remain disabled until the core loss model is validated. Non-best moves where both continuations lose by forced mate remain unscored pending mate-loss calibration.
+</p>
+
 <label for="pgnInput"><strong>PGNs</strong></label>
 <textarea id="pgnInput" placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'></textarea>
+
 <button id="analyseButton" type="button">Analyse PGNs</button>
 <button id="stopButton" type="button" disabled>Stop</button>
+
 <div id="status" class="status" role="status">Starting JavaScript...</div>
 <div id="engineName" class="small"></div>
 <div id="engineOptions" class="small"></div>
 <div id="stats" class="stats"></div>
 </div>
+
 <div id="results"></div>
+
 <script>
 "use strict";
 
@@ -36,8 +82,23 @@ const MULTIPV=1;
 const HASH_MB=128;
 const ACCURACY_DECAY=0.9155;
 const STOCKFISH_URL="./Assets/stockfish-19-single.js";
-const PARSER_SOURCES=["https://esm.sh/chess.js@1.4.0","https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"];
-const QUALITY_CLASSES=["Book","Brilliant","Great","Best","Excellent","Good","Inaccuracy","Mistake","Blunder"];
+
+const PARSER_SOURCES=[
+  "https://esm.sh/chess.js@1.4.0",
+  "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"
+];
+
+const QUALITY_CLASSES=[
+  "Book",
+  "Brilliant",
+  "Great",
+  "Best",
+  "Excellent",
+  "Good",
+  "Inaccuracy",
+  "Mistake",
+  "Blunder"
+];
 
 const analyseButton=document.getElementById("analyseButton");
 const stopButton=document.getElementById("stopButton");
@@ -48,153 +109,31 @@ const engineElement=document.getElementById("engineName");
 const optionsElement=document.getElementById("engineOptions");
 const resultsElement=document.getElementById("results");
 
-let Chess=null,supabaseClient=null,stopped=false,running=false,activeController=null;
-let openingRequests=0,openingCacheHits=0,engineSearches=0,engineCacheHits=0,fenAudits=0,fenFailures=0,boundRetries=0;
-const explorerCache=new Map(),engineCache=new Map();
-let worker=null,engineInitialisation=null,readyWaiter=null,currentSearch=null,fenWaiter=null;
-const engineMetadata={name:"",author:"",evalFile:"",evalFileSmall:"",nnueMessages:[],criticalErrors:[]};
+let Chess=null;
+let supabaseClient=null;
+let stopped=false;
+let running=false;
+let activeController=null;
 
-statusElement.textContent="Ready. Analyse button connected.";
-window.addEventListener("error",e=>statusElement.textContent=`JavaScript error: ${e.message} at line ${e.lineno}`);
-window.addEventListener("unhandledrejection",e=>statusElement.textContent=`Error: ${e.reason?.message||String(e.reason)}`);
+let openingRequests=0;
+let openingCacheHits=0;
+let engineSearches=0;
+let engineCacheHits=0;
+let fenAudits=0;
+let fenFailures=0;
+let boundRetries=0;
 
-function updateStats(){statsElement.textContent=`Opening requests: ${openingRequests} | Opening cache hits: ${openingCacheHits} | Stockfish searches: ${engineSearches} | Engine cache hits: ${engineCacheHits} | Bound retries: ${boundRetries} | FEN audits: ${fenAudits} | FEN failures: ${fenFailures}`}
-function updateEngineMetadata(){engineElement.textContent=[engineMetadata.name&&`Engine: ${engineMetadata.name}`,engineMetadata.author&&`Author: ${engineMetadata.author}`].filter(Boolean).join(" | ");optionsElement.textContent=[engineMetadata.evalFile&&`EvalFile: ${engineMetadata.evalFile}`,engineMetadata.evalFileSmall&&`EvalFileSmall: ${engineMetadata.evalFileSmall}`,engineMetadata.nnueMessages.at(-1)&&`NNUE: ${engineMetadata.nnueMessages.at(-1)}`].filter(Boolean).join(" | ")||"NNUE option details not yet reported."}
-function checkStopped(){if(stopped)throw new Error("Stopped.")}
-function withTimeout(promise,ms,message){let timer;return Promise.race([promise,new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(message)),ms))]).finally(()=>clearTimeout(timer))}
-function normalizeFen(fen){return String(fen||"").trim().replace(/\s+/g," ")}
-function splitPGNs(text){text=text.trim();if(!text)return[];const matches=Array.from(text.matchAll(/^\[Event\s/gm));if(matches.length<=1)return[text];return matches.map((m,i)=>text.slice(m.index,matches[i+1]?.index??text.length).trim()).filter(Boolean)}
-function moveToUci(move){return(move.from+move.to+(move.promotion||"")).toLowerCase()}
-function normaliseOpening(opening){if(!opening||(!opening.eco&&!opening.name))return null;return{eco:opening.eco||"",name:opening.name||""}}
-function gameCount(data){return Number(data?.white||0)+Number(data?.draws||0)+Number(data?.black||0)}
-function expectedFromWdl(wdl){return wdl?(wdl.w+0.5*wdl.d)/1000:null}
-function formatCp(cp){if(cp===null||cp===undefined)return"-";const value=cp/100;return(value>0?"+":"")+value.toFixed(2)}
-function formatRootScore(result){if(!result)return"-";if(result.scoreType==="mate")return(result.scoreValue>0?"+M":"-M")+Math.abs(result.scoreValue);return formatCp(result.scoreValue)}
-function formatWhiteDisplay(result,whiteToMove){if(!result)return"-";const sign=whiteToMove?1:-1;if(result.scoreType==="mate"){const mate=result.scoreValue*sign;return(mate>0?"+M":"-M")+Math.abs(mate)}return formatCp(result.scoreValue*sign)}
-function parseOption(line,name){const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return line.match(new RegExp(`^option name ${escaped} type string default (.+)$`))?.[1]?.trim()||""}
+const explorerCache=new Map();
+const engineCache=new Map();
 
-async function loadSupabase(){if(supabaseClient)return;statusElement.textContent="Loading Supabase connector...";const lib=await withTimeout(import("https://esm.sh/@supabase/supabase-js@2"),15000,"Supabase library download timed out.");checkStopped();supabaseClient=lib.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY)}
-async function getSession(){await loadSupabase();const result=await withTimeout(supabaseClient.auth.getSession(),15000,"Checking your login timed out.");checkStopped();if(result.error)throw result.error;if(!result.data.session)throw new Error("No Kastled login found. Sign into your chess app in this browser, then return here.");return result.data.session}
-async function loadChessParser(){if(Chess)return;const failures=[];for(const source of PARSER_SOURCES){try{statusElement.textContent="Loading chess parser...";const parser=await withTimeout(import(source),15000,"Chess parser download timed out.");if(typeof parser.Chess!=="function")throw new Error("Invalid chess parser.");Chess=parser.Chess;return}catch(error){if(stopped)throw error;failures.push(error.message)}}throw new Error("Could not load chess.js. "+failures.join(" / "))}
+let worker=null;
+let engineInitialisation=null;
+let readyWaiter=null;
+let currentSearch=null;
+let fenWaiter=null;
 
-async function getMasterPosition(rootFen,moves){checkStopped();const key=rootFen+"|"+moves.join(",");if(explorerCache.has(key)){openingCacheHits++;updateStats();return explorerCache.get(key)}const session=await getSession(),controller=new AbortController();activeController=controller;const timer=setTimeout(()=>controller.abort(),35000);openingRequests++;updateStats();try{const result=await supabaseClient.functions.invoke(FUNCTION_NAME,{headers:{Authorization:"Bearer "+session.access_token},body:{fen:rootFen,moves},signal:controller.signal});checkStopped();if(result.error){let details="";try{details=await result.error.context?.clone().text()||""}catch{}throw new Error(result.error.message+(details?" — "+details:""))}if(!result.data||result.data.error)throw new Error(result.data?.error||"The connector returned no opening data.");explorerCache.set(key,result.data);return result.data}catch(error){if(stopped)throw new Error("Stopped.");if(controller.signal.aborted)throw new Error("Opening request timed out.");throw error}finally{clearTimeout(timer);if(activeController===controller)activeController=null}}
-
-function resetEngine(message="Stockfish stopped."){if(currentSearch){const search=currentSearch;currentSearch=null;clearTimeout(search.timer);search.reject(new Error(message))}if(readyWaiter){const ready=readyWaiter;readyWaiter=null;clearTimeout(ready.timer);ready.reject(new Error(message))}if(fenWaiter){const fen=fenWaiter;fenWaiter=null;clearTimeout(fen.timer);fen.reject(new Error(message))}if(worker)worker.terminate();worker=null;engineInitialisation=null}
-function handleEngineLine(line){line=line.trim();if(!line)return;
-  if(line.startsWith("id name ")){engineMetadata.name=line.slice(8);updateEngineMetadata()}
-  if(line.startsWith("id author ")){engineMetadata.author=line.slice(10);updateEngineMetadata()}
-  if(line.startsWith("option name EvalFile type string default ")){engineMetadata.evalFile=parseOption(line,"EvalFile");updateEngineMetadata()}
-  if(line.startsWith("option name EvalFileSmall type string default ")){engineMetadata.evalFileSmall=parseOption(line,"EvalFileSmall");updateEngineMetadata()}
-  if(/NNUE|network/i.test(line)&&!/option name EvalFile/i.test(line)){if(!engineMetadata.nnueMessages.includes(line))engineMetadata.nnueMessages.push(line);updateEngineMetadata()}
-  if(line.includes("CRITICAL ERROR")){engineMetadata.criticalErrors.push(line);if(currentSearch){const search=currentSearch;currentSearch=null;clearTimeout(search.timer);search.reject(new Error(line))}return}
-  if(fenWaiter){const match=line.match(/^Fen:\s*(.+)$/i);if(match){const fen=fenWaiter;fenWaiter=null;clearTimeout(fen.timer);fen.resolve(match[1].trim())}}
-  if(readyWaiter&&line==="uciok"&&readyWaiter.stage==="uci"){const ready=readyWaiter;readyWaiter=null;clearTimeout(ready.timer);ready.resolve();return}
-  if(readyWaiter&&line==="readyok"&&readyWaiter.stage==="ready"){const ready=readyWaiter;readyWaiter=null;clearTimeout(ready.timer);ready.resolve();return}
-  if(!currentSearch)return;
-  if(line.startsWith("info ")&&line.includes(" score ")){
-    const depth=Number(line.match(/\bdepth\s+(\d+)/)?.[1]||0),seldepth=Number(line.match(/\bseldepth\s+(\d+)/)?.[1]||0),nodes=Number(line.match(/\bnodes\s+(\d+)/)?.[1]||0),timeMs=Number(line.match(/\btime\s+(\d+)/)?.[1]||0),hashfull=Number(line.match(/\bhashfull\s+(\d+)/)?.[1]||0),cp=line.match(/\bscore cp (-?\d+)/),mate=line.match(/\bscore mate (-?\d+)/),wdlMatch=line.match(/\bwdl\s+(\d+)\s+(\d+)\s+(\d+)/),pv=line.match(/\bpv\s+(.+)$/)?.[1]?.trim().split(/\s+/)||[],bound=line.includes(" lowerbound")?"lowerbound":line.includes(" upperbound")?"upperbound":null;
-    if(cp||mate){const candidate={scoreType:cp?"cp":"mate",scoreValue:Number(cp?cp[1]:mate[1]),wdl:wdlMatch?{w:Number(wdlMatch[1]),d:Number(wdlMatch[2]),l:Number(wdlMatch[3])}:null,depth,seldepth,nodes,timeMs,hashfull,pv,bound,raw:line};const target=bound?"boundResult":"exactResult";if(!currentSearch[target]||nodes>=currentSearch[target].nodes)currentSearch[target]=candidate}
-  }
-  if(line.startsWith("bestmove ")){const search=currentSearch;currentSearch=null;clearTimeout(search.timer);const result=search.exactResult||search.boundResult;if(!result){search.reject(new Error("Stockfish returned no usable score."));return}result.bestMove=line.match(/^bestmove\s+(\S+)/)?.[1]||"";result.ponder=line.match(/\bponder\s+(\S+)/)?.[1]||"";result.exact=!result.bound;search.resolve(result)}
-}
-async function waitReady(timeout=30000){if(readyWaiter)throw new Error("A ready check is already active.");return new Promise((resolve,reject)=>{readyWaiter={resolve,reject,stage:"ready",timer:setTimeout(()=>{readyWaiter=null;reject(new Error("Stockfish did not return readyok."))},timeout)};worker.postMessage("isready")})}
-async function initialiseStockfish(){checkStopped();if(engineInitialisation)return engineInitialisation;engineInitialisation=(async()=>{statusElement.textContent="Loading full Stockfish 19...";worker=new Worker(new URL(STOCKFISH_URL,document.baseURI).href);worker.onmessage=e=>String(e.data||"").split(/\r?\n/).forEach(handleEngineLine);worker.onerror=e=>{e.preventDefault();resetEngine(e.message||"Stockfish worker failed.")};worker.onmessageerror=()=>resetEngine("Could not read a Stockfish message.");await new Promise((resolve,reject)=>{readyWaiter={resolve,reject,stage:"uci",timer:setTimeout(()=>{readyWaiter=null;reject(new Error("Stockfish did not return uciok."))},60000)};worker.postMessage("uci")});worker.postMessage("setoption name Threads value 1");worker.postMessage("setoption name Hash value "+HASH_MB);worker.postMessage("setoption name MultiPV value "+MULTIPV);worker.postMessage("setoption name UCI_ShowWDL value true");worker.postMessage("setoption name UCI_LimitStrength value false");await waitReady();})();try{await engineInitialisation}catch(error){resetEngine(error.message);throw error}}
-async function startNewGame(){await initialiseStockfish();worker.postMessage("ucinewgame");await waitReady()}
-async function clearHash(){worker.postMessage("setoption name Clear Hash");await waitReady()}
-function positionCommand(rootFen,moves){return"position fen "+rootFen+(moves.length?" moves "+moves.join(" "):"")}
-async function auditPosition(rootFen,moves,expectedFen){await initialiseStockfish();if(fenWaiter)throw new Error("A FEN audit is already active.");const command=positionCommand(rootFen,moves);worker.postMessage(command);const actual=await new Promise((resolve,reject)=>{fenWaiter={resolve,reject,timer:setTimeout(()=>{fenWaiter=null;reject(new Error("Stockfish did not return a FEN for the d command."))},10000)};worker.postMessage("d")});fenAudits++;const ok=normalizeFen(actual)===normalizeFen(expectedFen);if(!ok)fenFailures++;updateStats();return{ok,expected:normalizeFen(expectedFen),actual:normalizeFen(actual),command}}
-async function runRawSearch({rootFen,moves,expectedFen,searchMoves=[],nodes=PRIMARY_NODES,audit=true}){checkStopped();await initialiseStockfish();const signature=`${rootFen}|${moves.join(" ")}|searchmoves=${searchMoves.join(" ")}|nodes=${nodes}|mpv=${MULTIPV}|hash=${HASH_MB}`;if(engineCache.has(signature)){engineCacheHits++;updateStats();return engineCache.get(signature)}let auditResult=null;if(audit){auditResult=await auditPosition(rootFen,moves,expectedFen);if(!auditResult.ok)throw new Error(`FEN mismatch. Chess.js: ${auditResult.expected} | Stockfish: ${auditResult.actual}`)}await clearHash();worker.postMessage(positionCommand(rootFen,moves));engineSearches++;updateStats();const go=`go nodes ${nodes}`+(searchMoves.length?" searchmoves "+searchMoves.join(" "):"");const result=await new Promise((resolve,reject)=>{currentSearch={resolve,reject,exactResult:null,boundResult:null,timer:setTimeout(()=>{if(worker)worker.postMessage("stop");const search=currentSearch;currentSearch=null;search?.reject(new Error("Stockfish search timed out."))},180000)};worker.postMessage(go)});result.command=positionCommand(rootFen,moves);result.goCommand=go;result.audit=auditResult;engineCache.set(signature,result);return result}
-async function runExactSearch(args){let result=await runRawSearch({...args,nodes:PRIMARY_NODES});if(result.exact)return result;boundRetries++;updateStats();result=await runRawSearch({...args,nodes:RETRY_NODES,audit:false});result.retriedForBound=true;return result}
-
-function rootLoss(best,played){const bestExpected=expectedFromWdl(best.wdl),playedExpected=expectedFromWdl(played.wdl),wdlLoss=bestExpected===null||playedExpected===null?null:Math.max(0,bestExpected-playedExpected);let cpLoss=null,mateState="none",badges=[];
-  if(best.scoreType==="cp"&&played.scoreType==="cp")cpLoss=Math.max(0,best.scoreValue-played.scoreValue);
-  else if(best.scoreType==="mate"&&best.scoreValue>0&&!(played.scoreType==="mate"&&played.scoreValue>0)){mateState="missedForcedMate";badges.push("Missed mate")}
-  else if(!(best.scoreType==="mate"&&best.scoreValue<0)&&played.scoreType==="mate"&&played.scoreValue<0){mateState="allowedForcedMate"}
-  else if(best.scoreType==="mate"&&played.scoreType==="mate"&&best.scoreValue>0&&played.scoreValue>0){mateState="bothForceMate";badges.push("Forced mate")}
-  else if(best.scoreType==="mate"&&played.scoreType==="mate"&&best.scoreValue<0&&played.scoreValue<0){mateState="bothLoseByMate"}
-  else{mateState="mixedScore"}
-  return{cpLoss,wdlLoss,bestExpected,playedExpected,mateState,badges}
-}
-function winningPositionFactor(bestRootCp,playedRootCp){
-  const retainedAdvantage=Math.min(bestRootCp,playedRootCp);
-  if(retainedAdvantage<150)return 1.00;
-  if(retainedAdvantage<300)return 1.00-(retainedAdvantage-150)/150*0.10;
-  if(retainedAdvantage<500)return 0.90-(retainedAdvantage-300)/200*0.30;
-  return 0.60;
-}
-function moveAccuracy({playedIsBest,loss,best,played}){
-  if(playedIsBest||loss.mateState==="bothForceMate")return 100;
-  if(loss.mateState==="missedForcedMate"||loss.mateState==="allowedForcedMate")return 0;
-  if(typeof loss.cpLoss==="number"&&Number.isFinite(loss.cpLoss)){
-    let factor=1.00;
-    if(best.scoreType==="cp"&&played.scoreType==="cp"){
-      factor=winningPositionFactor(best.scoreValue,played.scoreValue);
-    }
-    const effectivePawnLoss=Math.max(0,loss.cpLoss)*factor/100;
-    return Math.max(0,Math.min(100,100*Math.exp(-ACCURACY_DECAY*effectivePawnLoss)));
-  }
-  if(loss.mateState==="bothLoseByMate")return 100;
-  return null;
-}
-function classifyMove({playedIsBest,loss,best,played}){
-  const badges=[...loss.badges];
-  if(loss.mateState==="missedForcedMate"||loss.mateState==="allowedForcedMate")return{quality:"Blunder",badges};
-  if(playedIsBest)return{quality:"Best",badges};
-  if(loss.mateState==="bothForceMate")return{quality:"Best",badges};
-  if(loss.mateState==="bothLoseByMate")return{quality:"Inaccuracy",badges:[...badges,"Already lost"]};
-  if(loss.cpLoss===null)return{quality:"Inaccuracy",badges:[...badges,"Mixed score types"]};
-  const cp=loss.cpLoss,wdl=loss.wdlLoss;
-  if(cp<=15&&(wdl===null||wdl<=0.01))return{quality:"Best",badges};
-  if(cp<=35&&(wdl===null||wdl<=0.02))return{quality:"Excellent",badges};
-  if(cp<=80&&(wdl===null||wdl<=0.06))return{quality:"Good",badges};
-  if(cp<=175)return{quality:"Inaccuracy",badges};
-  if(cp<=350)return{quality:"Mistake",badges};
-  return{quality:"Blunder",badges};
-}
-
-function addCell(parent,value,className=""){const cell=document.createElement("td");cell.textContent=value;if(className)cell.className=className;parent.appendChild(cell);return cell}
-function addBadges(cell,badges){for(const badge of badges){const span=document.createElement("span");span.className="badge "+(badge==="Book"?"badge-book":"");span.textContent=badge;cell.appendChild(span)}}
-function createGameView(number,history){const box=document.createElement("div");box.className="box";const title=document.createElement("h2");title.textContent="Game "+number;box.appendChild(title);const link=document.createElement("a");link.href="https://lichess.org/analysis/pgn/"+encodeURIComponent(history.map(move=>move.san).join("_"));link.target="_blank";link.rel="noopener noreferrer";link.textContent="Open game in Lichess Analysis";box.appendChild(link);const note=document.createElement("p");note.className="small";note.textContent="Stockfish 19 diagnostic: unrestricted root versus forced played-move root, 100,000 nodes each, MultiPV 1, one thread, 128 MB hash.";box.appendChild(note);const wrap=document.createElement("div");wrap.className="table-wrap";const table=document.createElement("table"),head=document.createElement("thead"),headerRow=document.createElement("tr");for(const label of["Ply","Move","Move accuracy","Quality","Badges","After eval","Best move","Best root","Played root","CP loss","WDL loss","Search confidence","FEN audit","Master games","Share","Opening","Diagnostics"]){const th=document.createElement("th");th.textContent=label;headerRow.appendChild(th)}head.appendChild(headerRow);table.appendChild(head);const tbody=document.createElement("tbody");table.appendChild(tbody);wrap.appendChild(table);box.appendChild(wrap);const summary=document.createElement("div");summary.className="summary";box.appendChild(summary);resultsElement.appendChild(box);return{tbody,summary,rows:[]}}
-function updateSummary(view){const counts={w:{},b:{}},accuracies={w:[],b:[]};for(const name of QUALITY_CLASSES){counts.w[name]=0;counts.b[name]=0}for(const row of view.rows){counts[row.color][row.quality]++;if(typeof row.moveAccuracy==="number")accuracies[row.color].push(row.moveAccuracy)}view.summary.replaceChildren();const item=(text,cls="")=>{const div=document.createElement("div");div.textContent=text;if(cls)div.className=cls;view.summary.appendChild(div)};const average=color=>accuracies[color].length?accuracies[color].reduce((total,value)=>total+value,0)/accuracies[color].length:null;item("Metric","summary-header");item("White","summary-header");item("Black","summary-header");item("Accuracy");for(const color of ["w","b"]){const value=average(color);item(value===null?"-":value.toFixed(1)+"%")}for(const name of QUALITY_CLASSES){item(name,name);item(counts.w[name]);item(counts.b[name])}}
-async function appendResult(view,row){view.rows.push(row);const tr=document.createElement("tr");addCell(tr,row.ply);addCell(tr,`${row.san} (${row.uci})`);addCell(tr,row.moveAccuracy===null?"-":row.moveAccuracy.toFixed(1)+"%");addCell(tr,row.quality,row.quality);const badgeCell=addCell(tr,"");addBadges(badgeCell,row.badges);addCell(tr,row.afterEval);addCell(tr,row.bestMove||"-");addCell(tr,row.bestRoot);addCell(tr,row.playedRoot);addCell(tr,row.cpLoss===null?"-":(row.cpLoss/100).toFixed(2));addCell(tr,row.wdlLoss===null?"-":row.wdlLoss.toFixed(3));addCell(tr,row.confidence,row.confidence==="Exact"?"":"confidence-low");addCell(tr,row.audit?"PASS":"FAIL",row.audit?"audit-ok":"audit-bad");addCell(tr,row.masterGames===null?"-":row.masterGames.toLocaleString());addCell(tr,row.share===null?"-":row.share.toFixed(2)+"%");addCell(tr,row.opening?(row.opening.eco+" "+row.opening.name).trim():"-");const diagnosticCell=addCell(tr,"");const details=document.createElement("details"),summary=document.createElement("summary"),pre=document.createElement("pre");summary.textContent="Engine details";pre.textContent=row.diagnostic;details.append(summary,pre);diagnosticCell.append(details);view.tbody.appendChild(tr);updateSummary(view);updateStats();await new Promise(resolve=>setTimeout(resolve,0))}
-
-async function analyseGame(pgn,number){const parsed=new Chess();parsed.loadPgn(pgn,{strict:false});const history=parsed.history({verbose:true});if(!history.length)throw new Error(`Game ${number} contains no moves.`);await startNewGame();const rootFen=history[0].before,replay=new Chess(rootFen),moves=[],view=createGameView(number,history);let stillInBook=true,latestOpening=null;
-  for(let index=0;index<history.length;index++){
-    checkStopped();
-    const original=history[index],preFen=replay.fen(),whiteToMove=replay.turn()==="w",played=replay.move(original.san),playedUci=moveToUci(played),afterMoves=moves.concat(playedUci),afterFen=replay.fen(),checkmate=replay.isCheckmate(),drawn=!checkmate&&replay.isDraw();
-    let isBook=false,masterGames=null,share=null;
-    if(stillInBook&&afterMoves.length<=50){statusElement.textContent=`Game ${number}: checking opening ${played.san}...`;const beforeData=await getMasterPosition(rootFen,moves),entry=(beforeData.moves||[]).find(candidate=>String(candidate.uci||"").toLowerCase()===playedUci);if(entry){const afterData=await getMasterPosition(rootFen,afterMoves),opening=normaliseOpening(afterData.opening);if(opening)latestOpening=opening;if(opening){isBook=true;masterGames=gameCount(entry);const total=gameCount(beforeData);share=total?masterGames/total*100:0}else stillInBook=false}else stillInBook=false}
-    statusElement.textContent=`Game ${number}: analysing ${played.san} (${index+1}/${history.length})...`;
-    const best=await runExactSearch({rootFen,moves,expectedFen:preFen});
-    const playedIsBest=best.bestMove===playedUci;
-    const forced=playedIsBest?best:await runExactSearch({rootFen,moves,expectedFen:preFen,searchMoves:[playedUci],audit:false});
-    const loss=rootLoss(best,forced),classification=classifyMove({playedIsBest,loss,best,played:forced}),accuracy=moveAccuracy({playedIsBest,loss,best,played:forced});
-    let afterResult=null,afterEval;
-    if(checkmate)afterEval=whiteToMove?"+M0":"-M0";
-    else if(drawn)afterEval="0.00";
-    else{afterResult=await runExactSearch({rootFen,moves:afterMoves,expectedFen:afterFen});afterEval=formatWhiteDisplay(afterResult,!whiteToMove)}
-    const badges=[...(isBook?["Book"]:[]),...classification.badges];
-    const exact=best.exact&&forced.exact&&(afterResult?.exact??true),auditOk=Boolean(best.audit?.ok&&(afterResult?.audit?.ok??true));
-    const diagnostic=[
-      `Pre-move position: ${best.command}`,
-      `Pre-move FEN: ${best.audit?.actual||preFen}`,
-      `Best search: ${best.goCommand}\n${best.raw}`,
-      `Played search: ${forced.goCommand}\n${forced.raw}`,
-      afterResult?`After-position display search: ${afterResult.goCommand}\nAfter FEN: ${afterResult.audit?.actual||afterFen}\n${afterResult.raw}`:`After position: ${checkmate?"checkmate":"draw"}`,
-      `Loss: cp=${loss.cpLoss===null?"n/a":loss.cpLoss}, wdl=${loss.wdlLoss===null?"n/a":loss.wdlLoss.toFixed(3)}, mateState=${loss.mateState}`,
-      `Winning-position factor: ${best.scoreType==="cp"&&forced.scoreType==="cp"?winningPositionFactor(best.scoreValue,forced.scoreValue).toFixed(3):"n/a"}`,
-      `Move accuracy: ${accuracy===null?"n/a":accuracy.toFixed(3)+"%"} using effective CP loss`,
-      `NNUE: ${engineMetadata.nnueMessages.at(-1)||"No activation line captured"}`,
-      `Critical errors: ${engineMetadata.criticalErrors.length}`
-    ].join("\n\n");
-    await appendResult(view,{ply:index+1,color:played.color,san:played.san,uci:playedUci,quality:isBook?"Book":classification.quality,moveAccuracy:accuracy,badges,afterEval,bestMove:best.bestMove,bestRoot:formatRootScore(best),playedRoot:formatRootScore(forced),cpLoss:loss.cpLoss,wdlLoss:loss.wdlLoss,confidence:exact?"Exact":"Bound result",audit:auditOk,masterGames,share,opening:latestOpening,diagnostic});
-    moves.push(playedUci);
-  }
-}
-
-analyseButton.addEventListener("click",async()=>{if(running)return;const pgns=splitPGNs(pgnInput.value);if(!pgns.length){statusElement.textContent="Paste at least one PGN.";return}stopped=false;running=true;openingRequests=0;openingCacheHits=0;engineSearches=0;engineCacheHits=0;fenAudits=0;fenFailures=0;boundRetries=0;engineMetadata.criticalErrors=[];engineMetadata.nnueMessages=[];analyseButton.disabled=true;stopButton.disabled=false;resultsElement.replaceChildren();updateStats();try{statusElement.textContent="Checking Kastled login...";await getSession();await loadChessParser();for(let index=0;index<pgns.length;index++){checkStopped();await analyseGame(pgns[index],index+1)}statusElement.textContent=`Analysis complete. FEN audits: ${fenAudits-fenFailures}/${fenAudits} passed.`}catch(error){console.error(error);statusElement.textContent=stopped?"Stopped. Completed results remain visible.":"Error: "+error.message}finally{running=false;analyseButton.disabled=false;stopButton.disabled=true;updateStats()}});
-stopButton.addEventListener("click",()=>{stopped=true;if(activeController)activeController.abort();if(worker)worker.postMessage("stop");resetEngine("Stopped.");statusElement.textContent="Stopping. Completed results remain visible."});
-updateStats();
-</script>
-</body>
-</html>
+const engineMetadata={
+  name:"",
+  author:"",
+  evalFile:"",
+  
