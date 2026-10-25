@@ -299,7 +299,18 @@ const accuracy=moveAccuracy({
       `Played search: ${forced.goCommand}\n${forced.raw}`,
       afterResult?`After-position display search: ${afterResult.goCommand}\nAfter FEN: ${afterResult.audit?.actual||afterFen}\n${afterResult.raw}`:`After position: ${checkmate?"checkmate":"draw"}`,
       `Loss: cp=${loss.cpLoss===null?"n/a":loss.cpLoss}, wdl=${loss.wdlLoss===null?"n/a":loss.wdlLoss.toFixed(3)}, mateState=${loss.mateState}`,
-      `Winning-position factor: ${best.scoreType==="cp"&&forced.scoreType==="cp"?winningPositionFactor(best.scoreValue,forced.scoreValue).toFixed(3):"n/a"}`,
+
+`Mixed mate verification: ${
+  mateVerification.attempted
+    ? (
+        mateVerification.mateRediscovered
+          ? `Mate rediscovered at ${RETRY_NODES.toLocaleString()} nodes: ${formatRootScore(mateVerification.verifiedResult)}`
+          : `No mate rediscovered at ${RETRY_NODES.toLocaleString()} nodes; original v1.12 result retained. Retry result: ${formatRootScore(mateVerification.verifiedResult)}`
+      )
+    : "Not required"
+}`,
+      
+      
       `Move accuracy: ${accuracy===null?"n/a":accuracy.toFixed(3)+"%"} using effective CP loss`,
       `NNUE: ${engineMetadata.nnueMessages.at(-1)||"No activation line captured"}`,
       `Critical errors: ${engineMetadata.criticalErrors.length}`
