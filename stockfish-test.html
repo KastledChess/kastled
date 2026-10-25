@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chess Move Classification Tester v1.12.2.5</title>
+<title>Chess Move Classification Tester v1.12.2.6</title>
 
 <style>
 body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}
@@ -45,7 +45,7 @@ a{color:#1565c0}
 
 <body>
 
-<h1>Chess Move Classification Tester v1.12.2.5</h1>
+<h1>Chess Move Classification Tester v1.12.2.6</h1>
 
 <div class="box">
 
@@ -58,7 +58,7 @@ Primary searches: 100,000 nodes, MultiPV 1, one thread, 128 MB hash, UCI_ShowWDL
 </p>
 
 <p class="warning">
-Book moves are listed as Book in the move table and summary. Every move is still analysed and contributes to continuous move and game accuracy. Best is reserved for an exact match with Stockfish's reported best move. Great and Brilliant awards remain disabled until the core loss model is validated. When both continuations lead to forced mate, mate-distance deterioration is converted to an ordinary CP-equivalent loss at 40 centipawns per mate move.
+Book moves are listed as Book in the move table and summary. Every move is analysed and contributes to continuous move and game accuracy. Best is reserved for an exact match with Stockfish's reported best move. Great and Brilliant awards remain disabled until the core loss model is validated. Mate-to-mate accuracy is calculated continuously from the proportional change in Stockfish's mate distance.
 </p>
 
 <label for="pgnInput"><strong>PGNs</strong></label>
@@ -96,8 +96,7 @@ const SUPABASE_URL=
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
 
-const FUNCTION_NAME=
-  "lichess-opening";
+const FUNCTION_NAME="lichess-opening";
 
 const PRIMARY_NODES=100000;
 const RETRY_NODES=200000;
@@ -106,30 +105,7 @@ const HASH_MB=128;
 
 const ACCURACY_DECAY=0.9155;
 
-/*
-  Mate-distance conversion used only when both the best move
-  and the played move retain forced mate for the same side.
-
-  One mate move of deterioration is treated as 40 centipawns.
-
-  Example:
-    Best continuation:   -M4
-    Played continuation: -M1
-
-    The losing side shortened survival by three mate moves.
-
-    Equivalent loss:
-      3 × 40 = 120 cp
-
-    Ordinary accuracy:
-      100 × exp(-0.9155 × 1.20)
-      approximately 33.3%
-*/
-
-const MATE_DISTANCE_CP_PER_MOVE=40;
-
-const STOCKFISH_URL=
-  "./Assets/stockfish-19-single.js";
+const STOCKFISH_URL="./Assets/stockfish-19-single.js";
 
 const PARSER_SOURCES=[
   "https://esm.sh/chess.js@1.4.0",
@@ -191,13 +167,10 @@ let activeController=null;
 
 let openingRequests=0;
 let openingCacheHits=0;
-
 let engineSearches=0;
 let engineCacheHits=0;
-
 let fenAudits=0;
 let fenFailures=0;
-
 let boundRetries=0;
 
 const explorerCache=new Map();
@@ -205,7 +178,6 @@ const engineCache=new Map();
 
 let worker=null;
 let engineInitialisation=null;
-
 let readyWaiter=null;
 let currentSearch=null;
 let fenWaiter=null;
@@ -221,23 +193,17 @@ const engineMetadata={
 
 
 /* ============================================================
-   INITIAL STATUS
+   INITIAL STATUS AND ERRORS
    ============================================================ */
 
 statusElement.textContent=
   "Ready. Analyse button connected.";
-
-
-/* ============================================================
-   GLOBAL ERROR REPORTING
-   ============================================================ */
 
 window.addEventListener("error",event=>{
 
   statusElement.textContent=
     `JavaScript error: ${event.message} at line ${event.lineno}`;
 });
-
 
 window.addEventListener("unhandledrejection",event=>{
 
@@ -274,7 +240,6 @@ function updateEngineMetadata(){
   ]
   .filter(Boolean)
   .join(" | ");
-
 
   optionsElement.textContent=[
     engineMetadata.evalFile &&
@@ -318,7 +283,6 @@ function withTimeout(promise,ms,message){
         ms
       );
     })
-
   ]).finally(()=>{
 
     clearTimeout(timer);
@@ -1153,7 +1117,7 @@ function handleEngineLine(line){
 
 
 /* ============================================================
-   STOCKFISH READY / INITIALISATION
+   STOCKFISH READY AND INITIALISATION
    ============================================================ */
 
 async function waitReady(
@@ -1618,7 +1582,7 @@ async function runExactSearch(args){
 
 
 /* ============================================================
-   MATE-DISTANCE LOSS
+   MATE-DISTANCE CALCULATION
    ============================================================ */
 
 function calculateMateDistanceLoss(
@@ -1632,13 +1596,6 @@ function calculateMateDistanceLoss(
   ){
     return null;
   }
-
-  /*
-    The mate scores must have the same sign.
-
-    Positive means the root player can force mate.
-    Negative means the root player is being mated.
-  */
 
   if(
     Math.sign(best.scoreValue)!==
@@ -1657,21 +1614,18 @@ function calculateMateDistanceLoss(
       played.scoreValue
     );
 
-  let lostMateMoves=0;
+  let mateMovesLost=0;
 
   if(best.scoreValue>0){
 
     /*
       The player can force mate.
 
-      A larger played mate distance is worse because the
-      played move delays the forced win.
-
-      Best +M1 versus played +M4:
-        deterioration = 3 mate moves.
+      A larger mate distance is worse because the played move
+      delays the forced win.
     */
 
-    lostMateMoves=
+    mateMovesLost=
       Math.max(
         0,
         playedDistance-
@@ -1683,14 +1637,11 @@ function calculateMateDistanceLoss(
     /*
       The player is already being mated.
 
-      A smaller played mate distance is worse because the
-      played move allows mate sooner.
-
-      Best -M4 versus played -M1:
-        deterioration = 3 mate moves.
+      A smaller mate distance is worse because the played move
+      allows mate sooner.
     */
 
-    lostMateMoves=
+    mateMovesLost=
       Math.max(
         0,
         bestDistance-
@@ -1698,14 +1649,23 @@ function calculateMateDistanceLoss(
       );
   }
 
+  const comparisonDistance=
+    Math.max(
+      1,
+      bestDistance,
+      playedDistance
+    );
+
+  const relativeMateLoss=
+    mateMovesLost/
+    comparisonDistance;
+
   return{
     bestDistance,
     playedDistance,
-    lostMateMoves,
-
-    cpEquivalent:
-      lostMateMoves*
-      MATE_DISTANCE_CP_PER_MOVE
+    mateMovesLost,
+    comparisonDistance,
+    relativeMateLoss
   };
 }
 
@@ -1742,6 +1702,7 @@ function rootLoss(
   let cpLoss=null;
   let mateState="none";
   let mateDistanceLoss=null;
+
   const badges=[];
 
   if(
@@ -1804,22 +1765,17 @@ function rootLoss(
         played
       );
 
-    cpLoss=
-      mateDistanceLoss
-        ?.cpEquivalent ??
-      null;
-
     badges.push(
       "Forced mate retained"
     );
 
     if(
       mateDistanceLoss &&
-      mateDistanceLoss.lostMateMoves>0
+      mateDistanceLoss.mateMovesLost>0
     ){
 
       badges.push(
-        `Mate delayed by ${mateDistanceLoss.lostMateMoves}`
+        `Mate delayed by ${mateDistanceLoss.mateMovesLost}`
       );
     }
 
@@ -1839,22 +1795,17 @@ function rootLoss(
         played
       );
 
-    cpLoss=
-      mateDistanceLoss
-        ?.cpEquivalent ??
-      null;
-
     badges.push(
       "Already lost"
     );
 
     if(
       mateDistanceLoss &&
-      mateDistanceLoss.lostMateMoves>0
+      mateDistanceLoss.mateMovesLost>0
     ){
 
       badges.push(
-        `Mate sooner by ${mateDistanceLoss.lostMateMoves}`
+        `Mate sooner by ${mateDistanceLoss.mateMovesLost}`
       );
     }
 
@@ -1924,7 +1875,7 @@ function winningPositionFactor(
 
 
 /* ============================================================
-   ORDINARY ACCURACY FROM CP LOSS
+   ACCURACY CALCULATIONS
    ============================================================ */
 
 function accuracyFromCpLoss(
@@ -1961,6 +1912,34 @@ function accuracyFromCpLoss(
 }
 
 
+function accuracyFromMateDistance(
+  mateDistanceLoss
+){
+
+  if(!mateDistanceLoss){
+    return null;
+  }
+
+  const relativeMateLoss=
+    Math.max(
+      0,
+      mateDistanceLoss.relativeMateLoss
+    );
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      100*
+      Math.exp(
+        -ACCURACY_DECAY*
+        relativeMateLoss
+      )
+    )
+  );
+}
+
+
 /* ============================================================
    MOVE ACCURACY
    ============================================================ */
@@ -1973,8 +1952,7 @@ function moveAccuracy({
 }){
 
   /*
-    Only an exact match with Stockfish's reported best move
-    receives an automatic 100%.
+    An exact Stockfish bestmove match receives 100%.
   */
 
   if(playedIsBest){
@@ -1982,8 +1960,8 @@ function moveAccuracy({
   }
 
   /*
-    Missing a forced mate or allowing a new forced mate is
-    treated as a complete tactical failure.
+    Missing a forced mate or newly allowing forced mate is a
+    complete tactical failure.
   */
 
   if(
@@ -1994,8 +1972,7 @@ function moveAccuracy({
   }
 
   /*
-    When both lines remain CP evaluations, retain the existing
-    ordinary formula and the winning-position factor.
+    Ordinary CP-versus-CP calculation.
   */
 
   if(
@@ -2017,18 +1994,22 @@ function moveAccuracy({
   }
 
   /*
-    When both lines remain mate evaluations for the same side,
-    use the mate-distance CP equivalent and feed it through the
-    same ordinary accuracy formula without a separate mate
-    multiplier or winning-position reduction.
+    Mate-versus-mate calculation.
 
-    This means:
-      - exact best move remains 100%;
-      - an equivalent non-best mate line can remain near 100%;
-      - delaying a forced win is penalised normally;
-      - allowing mate sooner from an already-mated position is
-        penalised normally;
-      - the move is not omitted from game accuracy.
+    This uses Stockfish's actual mate distances. It does not
+    convert mate moves into an invented centipawn value.
+
+    Example:
+      best -M4
+      played -M1
+
+      mate moves lost = 3
+      comparison distance = 4
+      relative loss = 3 / 4 = 0.75
+
+      accuracy =
+        100 × exp(-0.9155 × 0.75)
+        approximately 50.3%
   */
 
   if(
@@ -2036,32 +2017,47 @@ function moveAccuracy({
       loss.mateState==="bothForceMate" ||
       loss.mateState==="bothLoseByMate"
     ) &&
-    typeof loss.cpLoss==="number"
+    loss.mateDistanceLoss
   ){
 
-    return accuracyFromCpLoss(
-      loss.cpLoss,
-      1
+    return accuracyFromMateDistance(
+      loss.mateDistanceLoss
     );
   }
 
   /*
-    Any remaining comparable CP-equivalent loss is processed
-    through the ordinary formula.
+    Fallback based on WDL deterioration.
+
+    This ensures that a remaining mixed score transition still
+    receives a calculated value rather than being omitted from
+    game accuracy.
   */
 
   if(
-    typeof loss.cpLoss==="number" &&
-    Number.isFinite(loss.cpLoss)
+    typeof loss.wdlLoss==="number" &&
+    Number.isFinite(loss.wdlLoss)
   ){
 
-    return accuracyFromCpLoss(
-      loss.cpLoss,
-      1
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        100*
+        Math.exp(
+          -ACCURACY_DECAY*
+          loss.wdlLoss*
+          10
+        )
+      )
     );
   }
 
-  return null;
+  /*
+    A final fallback is necessary only if Stockfish returns
+    neither a comparable score nor usable WDL information.
+  */
+
+  return 0;
 }
 
 
@@ -2081,7 +2077,7 @@ function classifyMove({
   ];
 
   /*
-    Best now has one strict meaning:
+    Best has one strict meaning:
     the played UCI move exactly matched Stockfish bestmove.
   */
 
@@ -2104,14 +2100,90 @@ function classifyMove({
     };
   }
 
+  /*
+    Mate-to-mate classifications use the actual proportional
+    mate-distance deterioration.
+  */
+
+  if(loss.mateDistanceLoss){
+
+    const relative=
+      loss.mateDistanceLoss
+        .relativeMateLoss;
+
+    if(relative<=0){
+
+      return{
+        quality:"Excellent",
+        badges
+      };
+    }
+
+    if(relative<=0.20){
+
+      return{
+        quality:"Excellent",
+        badges
+      };
+    }
+
+    if(relative<=0.40){
+
+      return{
+        quality:"Good",
+        badges
+      };
+    }
+
+    if(relative<=0.75){
+
+      return{
+        quality:"Inaccuracy",
+        badges
+      };
+    }
+
+    return{
+      quality:"Mistake",
+      badges
+    };
+  }
+
   if(loss.cpLoss===null){
+
+    if(
+      loss.wdlLoss!==null &&
+      loss.wdlLoss<=0.02
+    ){
+
+      return{
+        quality:"Excellent",
+        badges:[
+          ...badges,
+          "WDL-equivalent alternative"
+        ]
+      };
+    }
+
+    if(
+      loss.wdlLoss!==null &&
+      loss.wdlLoss<=0.06
+    ){
+
+      return{
+        quality:"Good",
+        badges:[
+          ...badges,
+          "WDL-based comparison"
+        ]
+      };
+    }
 
     return{
       quality:"Inaccuracy",
-
       badges:[
         ...badges,
-        "Uncalibrated score transition"
+        "Mixed score comparison"
       ]
     };
   }
@@ -2123,10 +2195,7 @@ function classifyMove({
     loss.wdlLoss;
 
   /*
-    A non-best move can no longer be classified as Best.
-
-    A non-best move with negligible deterioration is instead
-    classified as Excellent.
+    A non-best move can never be classified as Best.
   */
 
   if(
@@ -2444,6 +2513,11 @@ function updateSummary(view){
 
     counts[row.color][row.quality]++;
 
+    /*
+      Every move now returns a finite calculated accuracy and
+      contributes to the game accuracy.
+    */
+
     if(
       typeof row.moveAccuracy==="number" &&
       Number.isFinite(row.moveAccuracy)
@@ -2451,7 +2525,13 @@ function updateSummary(view){
 
       accuracies[row.color]
         .push(
-          row.moveAccuracy
+          Math.max(
+            0,
+            Math.min(
+              100,
+              row.moveAccuracy
+            )
+          )
         );
     }
   }
@@ -2480,11 +2560,8 @@ function updateSummary(view){
     };
 
   /*
-    Retain the ordinary arithmetic game average in this build.
-
-    The individual move logic is being corrected first so the
-    effect can be tested independently before adopting any
-    nonlinear game-level aggregation.
+    Retain the arithmetic average while the revised individual
+    move calculations are tested.
   */
 
   const average=
@@ -2578,9 +2655,7 @@ async function appendResult(
 
   addCell(
     tr,
-    row.moveAccuracy===null
-      ?"-"
-      :row.moveAccuracy.toFixed(1)+"%"
+    row.moveAccuracy.toFixed(1)+"%"
   );
 
   addCell(
@@ -2925,8 +3000,9 @@ async function analyseGame(
       });
 
     const playedIsBest=
-      String(best.bestMove||"")
-        .toLowerCase()===
+      String(
+        best.bestMove||""
+      ).toLowerCase()===
       playedUci;
 
     const forced=
@@ -3026,24 +3102,45 @@ async function analyseGame(
         ?[
             `Best mate distance: ${loss.mateDistanceLoss.bestDistance}`,
             `Played mate distance: ${loss.mateDistanceLoss.playedDistance}`,
-            `Mate moves lost: ${loss.mateDistanceLoss.lostMateMoves}`,
-            `Mate CP equivalent: ${loss.mateDistanceLoss.cpEquivalent}`
+            `Mate moves lost: ${loss.mateDistanceLoss.mateMovesLost}`,
+            `Comparison distance: ${loss.mateDistanceLoss.comparisonDistance}`,
+            `Relative mate loss: ${loss.mateDistanceLoss.relativeMateLoss.toFixed(6)}`
           ].join("\n")
-        :"Mate-distance conversion: n/a";
+        :"Mate-distance calculation: n/a";
 
-    const accuracyMethod=
-      playedIsBest
-        ?"exact Stockfish bestmove match"
-        :(
-            loss.mateDistanceLoss
-              ?"ordinary accuracy using mate-distance CP equivalent"
-              :(
-                  best.scoreType==="cp" &&
-                  forced.scoreType==="cp"
-                    ?"ordinary accuracy using effective CP loss"
-                    :"special tactical transition"
-                )
-          );
+    let accuracyMethod;
+
+    if(playedIsBest){
+
+      accuracyMethod=
+        "Exact Stockfish bestmove match";
+
+    }else if(
+      best.scoreType==="cp" &&
+      forced.scoreType==="cp"
+    ){
+
+      accuracyMethod=
+        "Continuous CP-loss calculation";
+
+    }else if(loss.mateDistanceLoss){
+
+      accuracyMethod=
+        "Continuous proportional mate-distance calculation";
+
+    }else if(
+      loss.mateState==="missedForcedMate" ||
+      loss.mateState==="allowedForcedMate"
+    ){
+
+      accuracyMethod=
+        "Forced-mate tactical transition";
+
+    }else{
+
+      accuracyMethod=
+        "Continuous WDL fallback calculation";
+    }
 
     const diagnostic=[
       `Pre-move position: ${best.command}`,
@@ -3094,11 +3191,7 @@ async function analyseGame(
           :"n/a"
       }`,
 
-      `Move accuracy: ${
-        accuracy===null
-          ?"unscored"
-          :accuracy.toFixed(3)+"%"
-      }`,
+      `Move accuracy: ${accuracy.toFixed(3)}%`,
 
       `Accuracy method: ${accuracyMethod}`,
 
@@ -3215,13 +3308,10 @@ analyseButton.addEventListener(
 
     openingRequests=0;
     openingCacheHits=0;
-
     engineSearches=0;
     engineCacheHits=0;
-
     fenAudits=0;
     fenFailures=0;
-
     boundRetries=0;
 
     engineMetadata.criticalErrors=[];
@@ -3306,6 +3396,7 @@ stopButton.addEventListener(
     }
 
     if(worker){
+
       worker.postMessage(
         "stop"
       );
