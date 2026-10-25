@@ -43,7 +43,7 @@ a{color:#1565c0}
 </head>
 <body>
 
-<h1>Chess Move Classification Tester v1.12.2.3</h1>
+<h1>Chess Move Classification Tester v1.12.2.3A</h1>
 
 <div class="box">
 <p>Diagnostic build comparing Stockfish's best move and the played move from the same pre-move position.</p>
@@ -536,7 +536,7 @@ function handleEngineLine(line){
     if(cp||mate){
       const candidate={
         scoreType:cp?"cp":"mate",
-        scoreValue:Number(cp?cp[1]:mate[1]),
+        scoreValue:Number(cp?cpmate[1]),
         wdl:wdlMatch
           ?{
               w:Number(wdlMatch[1]),
@@ -1132,7 +1132,7 @@ function addCell(parent,value,className=""){
 }
 
 function addBadges(cell,badges){
-r(const badge of badges){
+  for(const badge of badges){
     const span=document.createElement("span");
 
     span.className=
