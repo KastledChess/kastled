@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chess Move Classification Tester v1.12.2.3</title>
+<title>Chess Move Classification Tester v1.12.2.4</title>
+
 <style>
 body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}
 .box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
@@ -41,12 +42,16 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}
 a{color:#1565c0}
 </style>
 </head>
+
 <body>
 
-<h1>Chess Move Classification Tester v1.12.2.3A</h1>
+<h1>Chess Move Classification Tester v1.12.2.4</h1>
 
 <div class="box">
-<p>Diagnostic build comparing Stockfish's best move and the played move from the same pre-move position.</p>
+
+<p>
+Diagnostic build comparing Stockfish's best move and the played move from the same pre-move position.
+</p>
 
 <p class="notice">
 Primary searches: 100,000 nodes, MultiPV 1, one thread, 128 MB hash, UCI_ShowWDL enabled. Hash is cleared before each independent search. Bound-only results are retried at 200,000 nodes.
@@ -57,15 +62,23 @@ Book moves are listed as Book in the move table and summary. Every move is still
 </p>
 
 <label for="pgnInput"><strong>PGNs</strong></label>
-<textarea id="pgnInput" placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'></textarea>
+
+<textarea
+  id="pgnInput"
+  placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'
+></textarea>
 
 <button id="analyseButton" type="button">Analyse PGNs</button>
 <button id="stopButton" type="button" disabled>Stop</button>
 
-<div id="status" class="status" role="status">Starting JavaScript...</div>
+<div id="status" class="status" role="status">
+Starting JavaScript...
+</div>
+
 <div id="engineName" class="small"></div>
 <div id="engineOptions" class="small"></div>
 <div id="stats" class="stats"></div>
+
 </div>
 
 <div id="results"></div>
@@ -73,14 +86,24 @@ Book moves are listed as Book in the move table and summary. Every move is still
 <script>
 "use strict";
 
+/* ============================================================
+   CONFIGURATION
+   ============================================================ */
+
 const SUPABASE_URL="https://sgpafvuexdmnbdbvveny.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY="sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
+
+const SUPABASE_PUBLISHABLE_KEY=
+  "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
+
 const FUNCTION_NAME="lichess-opening";
+
 const PRIMARY_NODES=100000;
 const RETRY_NODES=200000;
 const MULTIPV=1;
 const HASH_MB=128;
+
 const ACCURACY_DECAY=0.9155;
+
 const STOCKFISH_URL="./Assets/stockfish-19-single.js";
 
 const PARSER_SOURCES=[
@@ -89,31 +112,67 @@ const PARSER_SOURCES=[
 ];
 
 const QUALITY_CLASSES=[
-  "Book","Brilliant","Great","Best","Excellent","Good",
-  "Inaccuracy","Mistake","Blunder"
+  "Book",
+  "Brilliant",
+  "Great",
+  "Best",
+  "Excellent",
+  "Good",
+  "Inaccuracy",
+  "Mistake",
+  "Blunder"
 ];
 
-const analyseButton=document.getElementById("analyseButton");
-const stopButton=document.getElementById("stopButton");
-const pgnInput=document.getElementById("pgnInput");
-const statusElement=document.getElementById("status");
-const statsElement=document.getElementById("stats");
-const engineElement=document.getElementById("engineName");
-const optionsElement=document.getElementById("engineOptions");
-const resultsElement=document.getElementById("results");
+
+/* ============================================================
+   PAGE ELEMENTS
+   ============================================================ */
+
+const analyseButton=
+  document.getElementById("analyseButton");
+
+const stopButton=
+  document.getElementById("stopButton");
+
+const pgnInput=
+  document.getElementById("pgnInput");
+
+const statusElement=
+  document.getElementById("status");
+
+const statsElement=
+  document.getElementById("stats");
+
+const engineElement=
+  document.getElementById("engineName");
+
+const optionsElement=
+  document.getElementById("engineOptions");
+
+const resultsElement=
+  document.getElementById("results");
+
+
+/* ============================================================
+   GLOBAL STATE
+   ============================================================ */
 
 let Chess=null;
 let supabaseClient=null;
+
 let stopped=false;
 let running=false;
 let activeController=null;
 
 let openingRequests=0;
 let openingCacheHits=0;
+
 let engineSearches=0;
 let engineCacheHits=0;
+
 let fenAudits=0;
 let fenFailures=0;
+
 let boundRetries=0;
 
 const explorerCache=new Map();
@@ -121,6 +180,7 @@ const engineCache=new Map();
 
 let worker=null;
 let engineInitialisation=null;
+
 let readyWaiter=null;
 let currentSearch=null;
 let fenWaiter=null;
@@ -134,17 +194,36 @@ const engineMetadata={
   criticalErrors:[]
 };
 
-statusElement.textContent="Ready. Analyse button connected.";
+
+/* ============================================================
+   INITIAL STATUS
+   ============================================================ */
+
+statusElement.textContent=
+  "Ready. Analyse button connected.";
+
+
+/* ============================================================
+   GLOBAL ERROR REPORTING
+   ============================================================ */
 
 window.addEventListener("error",event=>{
-  statusElement.textContent=`JavaScript error: ${event.message} at line ${event.lineno}`;
+  statusElement.textContent=
+    `JavaScript error: ${event.message} at line ${event.lineno}`;
 });
 
 window.addEventListener("unhandledrejection",event=>{
-  statusElement.textContent=`Error: ${event.reason?.message||String(event.reason)}`;
+  statusElement.textContent=
+    `Error: ${event.reason?.message||String(event.reason)}`;
 });
 
+
+/* ============================================================
+   DISPLAY HELPERS
+   ============================================================ */
+
 function updateStats(){
+
   statsElement.textContent=
     `Opening requests: ${openingRequests} | `+
     `Opening cache hits: ${openingCacheHits} | `+
@@ -155,395 +234,835 @@ function updateStats(){
     `FEN failures: ${fenFailures}`;
 }
 
+
 function updateEngineMetadata(){
+
   engineElement.textContent=[
-    engineMetadata.name&&`Engine: ${engineMetadata.name}`,
-    engineMetadata.author&&`Author: ${engineMetadata.author}`
-  ].filter(Boolean).join(" | ");
+    engineMetadata.name &&
+      `Engine: ${engineMetadata.name}`,
+
+    engineMetadata.author &&
+      `Author: ${engineMetadata.author}`
+  ]
+  .filter(Boolean)
+  .join(" | ");
 
   optionsElement.textContent=[
-    engineMetadata.evalFile&&`EvalFile: ${engineMetadata.evalFile}`,
-    engineMetadata.evalFileSmall&&`EvalFileSmall: ${engineMetadata.evalFileSmall}`,
-    engineMetadata.nnueMessages.at(-1)&&`NNUE: ${engineMetadata.nnueMessages.at(-1)}`
-  ].filter(Boolean).join(" | ")||"NNUE option details not yet reported.";
+    engineMetadata.evalFile &&
+      `EvalFile: ${engineMetadata.evalFile}`,
+
+    engineMetadata.evalFileSmall &&
+      `EvalFileSmall: ${engineMetadata.evalFileSmall}`,
+
+    engineMetadata.nnueMessages.at(-1) &&
+      `NNUE: ${engineMetadata.nnueMessages.at(-1)}`
+  ]
+  .filter(Boolean)
+  .join(" | ") ||
+  "NNUE option details not yet reported.";
 }
+
+
+/* ============================================================
+   BASIC HELPERS
+   ============================================================ */
 
 function checkStopped(){
-  if(stopped)throw new Error("Stopped.");
+  if(stopped){
+    throw new Error("Stopped.");
+  }
 }
+
 
 function withTimeout(promise,ms,message){
+
   let timer;
+
   return Promise.race([
     promise,
+
     new Promise((_,reject)=>{
-      timer=setTimeout(()=>reject(new Error(message)),ms);
+      timer=setTimeout(
+        ()=>reject(new Error(message)),
+        ms
+      );
     })
-  ]).finally(()=>clearTimeout(timer));
+
+  ]).finally(()=>{
+    clearTimeout(timer);
+  });
 }
+
 
 function normalizeFen(fen){
-  return String(fen||"").trim().replace(/\s+/g," ");
+
+  return String(fen||"")
+    .trim()
+    .replace(/\s+/g," ");
 }
+
 
 function splitPGNs(text){
+
   text=text.trim();
-  if(!text)return[];
 
-  const matches=Array.from(text.matchAll(/^\[Event\s/gm));
-  if(matches.length<=1)return[text];
+  if(!text){
+    return[];
+  }
 
-  return matches.map((match,index)=>
-    text.slice(
-      match.index,
-      matches[index+1]?.index??text.length
-    ).trim()
-  ).filter(Boolean);
+  const matches=
+    Array.from(
+      text.matchAll(/^\[Event\s/gm)
+    );
+
+  if(matches.length<=1){
+    return[text];
+  }
+
+  return matches
+    .map((match,index)=>
+      text.slice(
+        match.index,
+        matches[index+1]?.index ?? text.length
+      ).trim()
+    )
+    .filter(Boolean);
 }
+
 
 function moveToUci(move){
-  return(move.from+move.to+(move.promotion||"")).toLowerCase();
+
+  return(
+    move.from+
+    move.to+
+    (move.promotion||"")
+  ).toLowerCase();
 }
 
+
 function normaliseOpening(opening){
-  if(!opening||(!opening.eco&&!opening.name))return null;
+
+  if(
+    !opening ||
+    (!opening.eco && !opening.name)
+  ){
+    return null;
+  }
+
   return{
     eco:opening.eco||"",
     name:opening.name||""
   };
 }
 
+
 function gameCount(data){
-  return Number(data?.white||0)+
+
+  return(
+    Number(data?.white||0)+
     Number(data?.draws||0)+
-    Number(data?.black||0);
+    Number(data?.black||0)
+  );
 }
+
 
 function expectedFromWdl(wdl){
-  return wdl?(wdl.w+0.5*wdl.d)/1000:null;
+
+  return wdl
+    ?(wdl.w+0.5*wdl.d)/1000
+    :null;
 }
+
 
 function formatCp(cp){
-  if(cp===null||cp===undefined)return"-";
+
+  if(
+    cp===null ||
+    cp===undefined
+  ){
+    return"-";
+  }
+
   const value=cp/100;
-  return(value>0?"+":"")+value.toFixed(2);
+
+  return(
+    value>0
+      ?"+"
+      :""
+  )+value.toFixed(2);
 }
+
 
 function formatRootScore(result){
-  if(!result)return"-";
-  if(result.scoreType==="mate"){
-    return(result.scoreValue>0?"+M":"-M")+Math.abs(result.scoreValue);
-  }
-  return formatCp(result.scoreValue);
-}
 
-function formatWhiteDisplay(result,whiteToMove){
-  if(!result)return"-";
-
-  const sign=whiteToMove?1:-1;
-
-  if(result.scoreType==="mate"){
-    const mate=result.scoreValue*sign;
-    return(mate>0?"+M":"-M")+Math.abs(mate);
+  if(!result){
+    return"-";
   }
 
-  return formatCp(result.scoreValue*sign);
+  if(result.scoreType==="mate"){
+
+    return(
+      result.scoreValue>0
+        ?"+M"
+        :"-M"
+    )+
+    Math.abs(result.scoreValue);
+  }
+
+  return formatCp(
+    result.scoreValue
+  );
 }
+
+
+function formatWhiteDisplay(
+  result,
+  whiteToMove
+){
+
+  if(!result){
+    return"-";
+  }
+
+  const sign=
+    whiteToMove
+      ?1
+      :-1;
+
+  if(result.scoreType==="mate"){
+
+    const mate=
+      result.scoreValue*sign;
+
+    return(
+      mate>0
+        ?"+M"
+        :"-M"
+    )+
+    Math.abs(mate);
+  }
+
+  return formatCp(
+    result.scoreValue*sign
+  );
+}
+
 
 function parseOption(line,name){
-  const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+
+  const escaped=
+    name.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&"
+    );
+
   return line.match(
-    new RegExp(`^option name ${escaped} type string default (.+)$`)
+    new RegExp(
+      `^option name ${escaped} type string default (.+)$`
+    )
   )?.[1]?.trim()||"";
 }
 
+
+/* ============================================================
+   SUPABASE
+   ============================================================ */
+
 async function loadSupabase(){
-  if(supabaseClient)return;
 
-  statusElement.textContent="Loading Supabase connector...";
+  if(supabaseClient){
+    return;
+  }
 
-  const lib=await withTimeout(
-    import("https://esm.sh/@supabase/supabase-js@2"),
-    15000,
-    "Supabase library download timed out."
-  );
+  statusElement.textContent=
+    "Loading Supabase connector...";
+
+  const lib=
+    await withTimeout(
+      import("https://esm.sh/@supabase/supabase-js@2"),
+      15000,
+      "Supabase library download timed out."
+    );
 
   checkStopped();
 
-  supabaseClient=lib.createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY
-  );
+  supabaseClient=
+    lib.createClient(
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY
+    );
 }
 
+
 async function getSession(){
+
   await loadSupabase();
 
-  const result=await withTimeout(
-    supabaseClient.auth.getSession(),
-    15000,
-    "Checking your login timed out."
-  );
+  const result=
+    await withTimeout(
+      supabaseClient.auth.getSession(),
+      15000,
+      "Checking your login timed out."
+    );
 
   checkStopped();
 
-  if(result.error)throw result.error;
+  if(result.error){
+    throw result.error;
+  }
 
   if(!result.data.session){
+
     throw new Error(
-      "No Kastled login found. Sign into your chess app in this browser, then return here."
+      "No Kastled login found. "+
+      "Sign into your chess app in this browser, "+
+      "then return here."
     );
   }
 
   return result.data.session;
 }
 
+
+/* ============================================================
+   CHESS.JS
+   ============================================================ */
+
 async function loadChessParser(){
-  if(Chess)return;
+
+  if(Chess){
+    return;
+  }
 
   const failures=[];
 
   for(const source of PARSER_SOURCES){
+
     try{
-      statusElement.textContent="Loading chess parser...";
 
-      const parser=await withTimeout(
-        import(source),
-        15000,
-        "Chess parser download timed out."
-      );
+      statusElement.textContent=
+        "Loading chess parser...";
 
-      if(typeof parser.Chess!=="function"){
-        throw new Error("Invalid chess parser.");
+      const parser=
+        await withTimeout(
+          import(source),
+          15000,
+          "Chess parser download timed out."
+        );
+
+      if(
+        typeof parser.Chess!=="function"
+      ){
+        throw new Error(
+          "Invalid chess parser."
+        );
       }
 
       Chess=parser.Chess;
+
       return;
+
     }catch(error){
-      if(stopped)throw error;
-      failures.push(error.message);
+
+      if(stopped){
+        throw error;
+      }
+
+      failures.push(
+        error.message
+      );
     }
   }
 
   throw new Error(
-    "Could not load chess.js. "+failures.join(" / ")
+    "Could not load chess.js. "+
+    failures.join(" / ")
   );
 }
 
-async function getMasterPosition(rootFen,moves){
+
+/* ============================================================
+   OPENING EXPLORER
+   ============================================================ */
+
+async function getMasterPosition(
+  rootFen,
+  moves
+){
+
   checkStopped();
 
-  const key=rootFen+"|"+moves.join(",");
+  const key=
+    rootFen+"|"+moves.join(",");
 
   if(explorerCache.has(key)){
+
     openingCacheHits++;
+
     updateStats();
+
     return explorerCache.get(key);
   }
 
-  const session=await getSession();
-  const controller=new AbortController();
+  const session=
+    await getSession();
+
+  const controller=
+    new AbortController();
 
   activeController=controller;
 
-  const timer=setTimeout(()=>controller.abort(),35000);
+  const timer=
+    setTimeout(
+      ()=>controller.abort(),
+      35000
+    );
 
   openingRequests++;
+
   updateStats();
 
   try{
-    const result=await supabaseClient.functions.invoke(
-      FUNCTION_NAME,
-      {
-        headers:{
-          Authorization:"Bearer "+session.access_token
-        },
-        body:{
-          fen:rootFen,
-          moves
-        },
-        signal:controller.signal
-      }
-    );
+
+    const result=
+      await supabaseClient.functions.invoke(
+        FUNCTION_NAME,
+        {
+          headers:{
+            Authorization:
+              "Bearer "+
+              session.access_token
+          },
+
+          body:{
+            fen:rootFen,
+            moves
+          },
+
+          signal:
+            controller.signal
+        }
+      );
 
     checkStopped();
 
     if(result.error){
+
       let details="";
 
       try{
-        details=await result.error.context?.clone().text()||"";
+
+        details=
+          await result.error.context
+            ?.clone()
+            .text()||"";
+
       }catch{}
 
       throw new Error(
-        result.error.message+(details?" — "+details:"")
+        result.error.message+
+        (
+          details
+            ?" — "+details
+            :""
+        )
       );
     }
 
-    if(!result.data||result.data.error){
+    if(
+      !result.data ||
+      result.data.error
+    ){
+
       throw new Error(
-        result.data?.error||
+        result.data?.error ||
         "The connector returned no opening data."
       );
     }
 
-    explorerCache.set(key,result.data);
+    explorerCache.set(
+      key,
+      result.data
+    );
+
     return result.data;
+
   }catch(error){
-    if(stopped)throw new Error("Stopped.");
+
+    if(stopped){
+      throw new Error("Stopped.");
+    }
 
     if(controller.signal.aborted){
-      throw new Error("Opening request timed out.");
+      throw new Error(
+        "Opening request timed out."
+      );
     }
 
     throw error;
+
   }finally{
+
     clearTimeout(timer);
 
-    if(activeController===controller){
+    if(
+      activeController===controller
+    ){
       activeController=null;
     }
   }
 }
 
-function resetEngine(message="Stockfish stopped."){
+
+/* ============================================================
+   STOCKFISH ENGINE
+   ============================================================ */
+
+function resetEngine(
+  message="Stockfish stopped."
+){
+
   if(currentSearch){
+
     const search=currentSearch;
+
     currentSearch=null;
-    clearTimeout(search.timer);
-    search.reject(new Error(message));
+
+    clearTimeout(
+      search.timer
+    );
+
+    search.reject(
+      new Error(message)
+    );
   }
+
 
   if(readyWaiter){
+
     const ready=readyWaiter;
+
     readyWaiter=null;
-    clearTimeout(ready.timer);
-    ready.reject(new Error(message));
+
+    clearTimeout(
+      ready.timer
+    );
+
+    ready.reject(
+      new Error(message)
+    );
   }
+
 
   if(fenWaiter){
+
     const fen=fenWaiter;
+
     fenWaiter=null;
-    clearTimeout(fen.timer);
-    fen.reject(new Error(message));
+
+    clearTimeout(
+      fen.timer
+    );
+
+    fen.reject(
+      new Error(message)
+    );
   }
 
-  if(worker)worker.terminate();
+
+  if(worker){
+    worker.terminate();
+  }
 
   worker=null;
+
   engineInitialisation=null;
 }
 
+
+/* ============================================================
+   STOCKFISH MESSAGE PARSER
+   ============================================================ */
+
 function handleEngineLine(line){
+
   line=line.trim();
 
-  if(!line)return;
+  if(!line){
+    return;
+  }
+
 
   if(line.startsWith("id name ")){
-    engineMetadata.name=line.slice(8);
+
+    engineMetadata.name=
+      line.slice(8);
+
     updateEngineMetadata();
   }
+
 
   if(line.startsWith("id author ")){
-    engineMetadata.author=line.slice(10);
+
+    engineMetadata.author=
+      line.slice(10);
+
     updateEngineMetadata();
   }
 
-  if(line.startsWith("option name EvalFile type string default ")){
-    engineMetadata.evalFile=parseOption(line,"EvalFile");
+
+  if(
+    line.startsWith(
+      "option name EvalFile type string default "
+    )
+  ){
+
+    engineMetadata.evalFile=
+      parseOption(
+        line,
+        "EvalFile"
+      );
+
     updateEngineMetadata();
   }
 
-  if(line.startsWith("option name EvalFileSmall type string default ")){
-    engineMetadata.evalFileSmall=parseOption(line,"EvalFileSmall");
+
+  if(
+    line.startsWith(
+      "option name EvalFileSmall type string default "
+    )
+  ){
+
+    engineMetadata.evalFileSmall=
+      parseOption(
+        line,
+        "EvalFileSmall"
+      );
+
     updateEngineMetadata();
   }
 
-  if(/NNUE|network/i.test(line)&&!/option name EvalFile/i.test(line)){
-    if(!engineMetadata.nnueMessages.includes(line)){
-      engineMetadata.nnueMessages.push(line);
+
+  if(
+    /NNUE|network/i.test(line) &&
+    !/option name EvalFile/i.test(line)
+  ){
+
+    if(
+      !engineMetadata.nnueMessages
+        .includes(line)
+    ){
+      engineMetadata.nnueMessages
+        .push(line);
     }
+
     updateEngineMetadata();
   }
 
-  if(line.includes("CRITICAL ERROR")){
-    engineMetadata.criticalErrors.push(line);
+
+  if(
+    line.includes("CRITICAL ERROR")
+  ){
+
+    engineMetadata.criticalErrors
+      .push(line);
 
     if(currentSearch){
+
       const search=currentSearch;
+
       currentSearch=null;
-      clearTimeout(search.timer);
-      search.reject(new Error(line));
+
+      clearTimeout(
+        search.timer
+      );
+
+      search.reject(
+        new Error(line)
+      );
     }
 
     return;
   }
+
 
   if(fenWaiter){
-    const match=line.match(/^Fen:\s*(.+)$/i);
+
+    const match=
+      line.match(
+        /^Fen:\s*(.+)$/i
+      );
 
     if(match){
+
       const fen=fenWaiter;
+
       fenWaiter=null;
-      clearTimeout(fen.timer);
-      fen.resolve(match[1].trim());
+
+      clearTimeout(
+        fen.timer
+      );
+
+      fen.resolve(
+        match[1].trim()
+      );
     }
   }
 
-  if(readyWaiter&&line==="uciok"&&readyWaiter.stage==="uci"){
+
+  if(
+    readyWaiter &&
+    line==="uciok" &&
+    readyWaiter.stage==="uci"
+  ){
+
     const ready=readyWaiter;
+
     readyWaiter=null;
-    clearTimeout(ready.timer);
-    ready.resolve();
-    return;
-  }
 
-  if(readyWaiter&&line==="readyok"&&readyWaiter.stage==="ready"){
-    const ready=readyWaiter;
-    readyWaiter=null;
-    clearTimeout(ready.timer);
-    ready.resolve();
-    return;
-  }
-
-  if(!currentSearch)return;
-
-  if(line.startsWith("info ")&&line.includes(" score ")){
-    const depth=Number(line.match(/\bdepth\s+(\d+)/)?.[1]||0);
-    const seldepth=Number(line.match(/\bseldepth\s+(\d+)/)?.[1]||0);
-    const nodes=Number(line.match(/\bnodes\s+(\d+)/)?.[1]||0);
-    const timeMs=Number(line.match(/\btime\s+(\d+)/)?.[1]||0);
-    const hashfull=Number(line.match(/\bhashfull\s+(\d+)/)?.[1]||0);
-
-    const cp=line.match(/\bscore cp (-?\d+)/);
-    const mate=line.match(/\bscore mate (-?\d+)/);
-
-    const wdlMatch=line.match(
-      /\bwdl\s+(\d+)\s+(\d+)\s+(\d+)/
+    clearTimeout(
+      ready.timer
     );
 
-    const pv=line.match(/\bpv\s+(.+)$/)
+    ready.resolve();
+
+    return;
+  }
+
+
+  if(
+    readyWaiter &&
+    line==="readyok" &&
+    readyWaiter.stage==="ready"
+  ){
+
+    const ready=readyWaiter;
+
+    readyWaiter=null;
+
+    clearTimeout(
+      ready.timer
+    );
+
+    ready.resolve();
+
+    return;
+  }
+
+
+  if(!currentSearch){
+    return;
+  }
+
+
+  if(
+    line.startsWith("info ") &&
+    line.includes(" score ")
+  ){
+
+    const depth=
+      Number(
+        line.match(
+          /\bdepth\s+(\d+)/
+        )?.[1]||0
+      );
+
+    const seldepth=
+      Number(
+        line.match(
+          /\bseldepth\s+(\d+)/
+        )?.[1]||0
+      );
+
+    const nodes=
+      Number(
+        line.match(
+          /\bnodes\s+(\d+)/
+        )?.[1]||0
+      );
+
+    const timeMs=
+      Number(
+        line.match(
+          /\btime\s+(\d+)/
+        )?.[1]||0
+      );
+
+    const hashfull=
+      Number(
+        line.match(
+          /\bhashfull\s+(\d+)/
+        )?.[1]||0
+      );
+
+
+    const cp=
+      line.match(
+        /\bscore cp (-?\d+)/
+      );
+
+    const mate=
+      line.match(
+        /\bscore mate (-?\d+)/
+      );
+
+
+    const wdlMatch=
+      line.match(
+        /\bwdl\s+(\d+)\s+(\d+)\s+(\d+)/
+      );
+
+
+    const pv=
+      line.match(
+        /\bpv\s+(.+)$/
+      )
       ?.[1]
       ?.trim()
       .split(/\s+/)||[];
 
-    const bound=line.includes(" lowerbound")
-      ?"lowerbound"
-      :line.includes(" upperbound")
-        ?"upperbound"
-        :null;
+
+    const bound=
+      line.includes(" lowerbound")
+        ?"lowerbound"
+        :line.includes(" upperbound")
+          ?"upperbound"
+          :null;
+
 
     if(cp||mate){
+
       const candidate={
-        scoreType:cp?"cp":"mate",
-        scoreValue:Number(cp?cpmate[1]),
-        wdl:wdlMatch
-          ?{
-              w:Number(wdlMatch[1]),
-              d:Number(wdlMatch[2]),
-              l:Number(wdlMatch[3])
-            }
-          :null,
+
+        scoreType:
+          cp
+            ?"cp"
+            :"mate",
+
+        scoreValue:
+          Number(
+            cp
+              ?cp[1]
+              :mate[1]
+          ),
+
+        wdl:
+          wdlMatch
+            ?{
+                w:Number(
+                  wdlMatch[1]
+                ),
+
+                d:Number(
+                  wdlMatch[2]
+                ),
+
+                l:Number(
+                  wdlMatch[3]
+                )
+              }
+            :null,
+
         depth,
         seldepth,
         nodes,
@@ -554,231 +1073,467 @@ function handleEngineLine(line){
         raw:line
       };
 
-      const target=bound
-        ?"boundResult"
-        :"exactResult";
+
+      const target=
+        bound
+          ?"boundResult"
+          :"exactResult";
+
 
       if(
-        !currentSearch[target]||
+        !currentSearch[target] ||
         nodes>=currentSearch[target].nodes
       ){
+
         currentSearch[target]=candidate;
       }
     }
   }
 
-  if(line.startsWith("bestmove ")){
-    const search=currentSearch;
+
+  if(
+    line.startsWith("bestmove ")
+  ){
+
+    const search=
+      currentSearch;
 
     currentSearch=null;
-    clearTimeout(search.timer);
+
+    clearTimeout(
+      search.timer
+    );
+
 
     const result=
-      search.exactResult||
+      search.exactResult ||
       search.boundResult;
 
+
     if(!result){
+
       search.reject(
-        new Error("Stockfish returned no usable score.")
+        new Error(
+          "Stockfish returned no usable score."
+        )
       );
+
       return;
     }
 
+
     result.bestMove=
-      line.match(/^bestmove\s+(\S+)/)?.[1]||"";
+      line.match(
+        /^bestmove\s+(\S+)/
+      )?.[1]||"";
+
 
     result.ponder=
-      line.match(/\bponder\s+(\S+)/)?.[1]||"";
+      line.match(
+        /\bponder\s+(\S+)/
+      )?.[1]||"";
 
-    result.exact=!result.bound;
 
-    search.resolve(result);
+    result.exact=
+      !result.bound;
+
+
+    search.resolve(
+      result
+    );
   }
 }
 
-async function waitReady(timeout=30000){
+
+/* ============================================================
+   STOCKFISH READY / INITIALISATION
+   ============================================================ */
+
+async function waitReady(
+  timeout=30000
+){
+
   if(readyWaiter){
-    throw new Error("A ready check is already active.");
+
+    throw new Error(
+      "A ready check is already active."
+    );
   }
 
-  return new Promise((resolve,reject)=>{
-    readyWaiter={
-      resolve,
-      reject,
-      stage:"ready",
-      timer:setTimeout(()=>{
-        readyWaiter=null;
-        reject(
-          new Error("Stockfish did not return readyok.")
-        );
-      },timeout)
-    };
 
-    worker.postMessage("isready");
-  });
+  return new Promise(
+    (resolve,reject)=>{
+
+      readyWaiter={
+
+        resolve,
+        reject,
+        stage:"ready",
+
+        timer:setTimeout(
+          ()=>{
+
+            readyWaiter=null;
+
+            reject(
+              new Error(
+                "Stockfish did not return readyok."
+              )
+            );
+
+          },
+          timeout
+        )
+      };
+
+
+      worker.postMessage(
+        "isready"
+      );
+    }
+  );
 }
+
 
 async function initialiseStockfish(){
+
   checkStopped();
 
+
   if(engineInitialisation){
+
     return engineInitialisation;
   }
 
-  engineInitialisation=(async()=>{
-    statusElement.textContent="Loading full Stockfish 19...";
 
-    worker=new Worker(
-      new URL(STOCKFISH_URL,document.baseURI).href
-    );
+  engineInitialisation=
+    (async()=>{
 
-    worker.onmessage=event=>{
-      String(event.data||"")
-        .split(/\r?\n/)
-        .forEach(handleEngineLine);
-    };
+      statusElement.textContent=
+        "Loading full Stockfish 19...";
 
-    worker.onerror=event=>{
-      event.preventDefault();
-      resetEngine(
-        event.message||"Stockfish worker failed."
-      );
-    };
 
-    worker.onmessageerror=()=>{
-      resetEngine(
-        "Could not read a Stockfish message."
-      );
-    };
+      worker=
+        new Worker(
+          new URL(
+            STOCKFISH_URL,
+            document.baseURI
+          ).href
+        );
 
-    await new Promise((resolve,reject)=>{
-      readyWaiter={
-        resolve,
-        reject,
-        stage:"uci",
-        timer:setTimeout(()=>{
-          readyWaiter=null;
-          reject(
-            new Error("Stockfish did not return uciok.")
+
+      worker.onmessage=
+        event=>{
+
+          String(
+            event.data||""
+          )
+          .split(/\r?\n/)
+          .forEach(
+            handleEngineLine
           );
-        },60000)
-      };
+        };
 
-      worker.postMessage("uci");
-    });
 
-    worker.postMessage("setoption name Threads value 1");
-    worker.postMessage("setoption name Hash value "+HASH_MB);
-    worker.postMessage("setoption name MultiPV value "+MULTIPV);
-    worker.postMessage("setoption name UCI_ShowWDL value true");
-    worker.postMessage("setoption name UCI_LimitStrength value false");
+      worker.onerror=
+        event=>{
 
-    await waitReady();
-  })();
+          event.preventDefault();
+
+          resetEngine(
+            event.message ||
+            "Stockfish worker failed."
+          );
+        };
+
+
+      worker.onmessageerror=
+        ()=>{
+
+          resetEngine(
+            "Could not read a Stockfish message."
+          );
+        };
+
+
+      await new Promise(
+        (resolve,reject)=>{
+
+          readyWaiter={
+
+            resolve,
+            reject,
+            stage:"uci",
+
+            timer:setTimeout(
+              ()=>{
+
+                readyWaiter=null;
+
+                reject(
+                  new Error(
+                    "Stockfish did not return uciok."
+                  )
+                );
+
+              },
+              60000
+            )
+          };
+
+
+          worker.postMessage(
+            "uci"
+          );
+        }
+      );
+
+
+      worker.postMessage(
+        "setoption name Threads value 1"
+      );
+
+      worker.postMessage(
+        "setoption name Hash value "+
+        HASH_MB
+      );
+
+      worker.postMessage(
+        "setoption name MultiPV value "+
+        MULTIPV
+      );
+
+      worker.postMessage(
+        "setoption name UCI_ShowWDL value true"
+      );
+
+      worker.postMessage(
+        "setoption name UCI_LimitStrength value false"
+      );
+
+
+      await waitReady();
+
+    })();
+
 
   try{
+
     await engineInitialisation;
+
   }catch(error){
-    resetEngine(error.message);
+
+    resetEngine(
+      error.message
+    );
+
     throw error;
   }
 }
 
+
 async function startNewGame(){
+
   await initialiseStockfish();
-  worker.postMessage("ucinewgame");
+
+  worker.postMessage(
+    "ucinewgame"
+  );
+
   await waitReady();
 }
+
 
 async function clearHash(){
-  worker.postMessage("setoption name Clear Hash");
+
+  worker.postMessage(
+    "setoption name Clear Hash"
+  );
+
   await waitReady();
 }
 
-function positionCommand(rootFen,moves){
-  return"position fen "+rootFen+
-    (moves.length?" moves "+moves.join(" "):"");
+
+function positionCommand(
+  rootFen,
+  moves
+){
+
+  return(
+    "position fen "+
+    rootFen+
+    (
+      moves.length
+        ?" moves "+moves.join(" ")
+        :""
+    )
+  );
 }
 
-async function auditPosition(rootFen,moves,expectedFen){
+
+/* ============================================================
+   FEN AUDIT
+   ============================================================ */
+
+async function auditPosition(
+  rootFen,
+  moves,
+  expectedFen
+){
+
   await initialiseStockfish();
 
+
   if(fenWaiter){
-    throw new Error("A FEN audit is already active.");
+
+    throw new Error(
+      "A FEN audit is already active."
+    );
   }
 
-  const command=positionCommand(rootFen,moves);
 
-  worker.postMessage(command);
+  const command=
+    positionCommand(
+      rootFen,
+      moves
+    );
 
-  const actual=await new Promise((resolve,reject)=>{
-    fenWaiter={
-      resolve,
-      reject,
-      timer:setTimeout(()=>{
-        fenWaiter=null;
-        reject(
-          new Error(
-            "Stockfish did not return a FEN for the d command."
+
+  worker.postMessage(
+    command
+  );
+
+
+  const actual=
+    await new Promise(
+      (resolve,reject)=>{
+
+        fenWaiter={
+
+          resolve,
+          reject,
+
+          timer:setTimeout(
+            ()=>{
+
+              fenWaiter=null;
+
+              reject(
+                new Error(
+                  "Stockfish did not return a FEN for the d command."
+                )
+              );
+
+            },
+            10000
           )
-        );
-      },10000)
-    };
+        };
 
-    worker.postMessage("d");
-  });
+
+        worker.postMessage(
+          "d"
+        );
+      }
+    );
+
 
   fenAudits++;
+
 
   const ok=
     normalizeFen(actual)===
     normalizeFen(expectedFen);
 
-  if(!ok)fenFailures++;
+
+  if(!ok){
+    fenFailures++;
+  }
+
 
   updateStats();
 
+
   return{
+
     ok,
-    expected:normalizeFen(expectedFen),
-    actual:normalizeFen(actual),
+
+    expected:
+      normalizeFen(
+        expectedFen
+      ),
+
+    actual:
+      normalizeFen(
+        actual
+      ),
+
     command
   };
 }
 
+
+/* ============================================================
+   STOCKFISH SEARCH
+   ============================================================ */
+
 async function runRawSearch({
+
   rootFen,
   moves,
   expectedFen,
   searchMoves=[],
   nodes=PRIMARY_NODES,
   audit=true
+
 }){
+
   checkStopped();
 
   await initialiseStockfish();
 
-  const signature=
-    `${rootFen}|${moves.join(" ")}|`+
-    `searchmoves=${searchMoves.join(" ")}|`+
-    `nodes=${nodes}|mpv=${MULTIPV}|hash=${HASH_MB}`;
 
-  if(engineCache.has(signature)){
+  const signature=
+
+    `${rootFen}|${moves.join(" ")}|`+
+
+    `searchmoves=${searchMoves.join(" ")}|`+
+
+    `nodes=${nodes}|`+
+
+    `mpv=${MULTIPV}|`+
+
+    `hash=${HASH_MB}`;
+
+
+  if(
+    engineCache.has(signature)
+  ){
+
     engineCacheHits++;
+
     updateStats();
-    return engineCache.get(signature);
+
+    return engineCache.get(
+      signature
+    );
   }
+
 
   let auditResult=null;
 
+
   if(audit){
-    auditResult=await auditPosition(
-      rootFen,
-      moves,
-      expectedFen
-    );
+
+    auditResult=
+      await auditPosition(
+        rootFen,
+        moves,
+        expectedFen
+      );
+
 
     if(!auditResult.ok){
+
       throw new Error(
         `FEN mismatch. Chess.js: ${auditResult.expected} | `+
         `Stockfish: ${auditResult.actual}`
@@ -786,136 +1541,278 @@ async function runRawSearch({
     }
   }
 
+
   await clearHash();
 
+
   worker.postMessage(
-    positionCommand(rootFen,moves)
+    positionCommand(
+      rootFen,
+      moves
+    )
   );
 
+
   engineSearches++;
+
   updateStats();
 
+
   const go=
+
     `go nodes ${nodes}`+
+
     (
       searchMoves.length
-        ?" searchmoves "+searchMoves.join(" ")
+        ?" searchmoves "+
+          searchMoves.join(" ")
         :""
     );
 
-  const result=await new Promise((resolve,reject)=>{
-    currentSearch={
-      resolve,
-      reject,
-      exactResult:null,
-      boundResult:null,
-      timer:setTimeout(()=>{
-        if(worker)worker.postMessage("stop");
 
-        const search=currentSearch;
-        currentSearch=null;
+  const result=
+    await new Promise(
+      (resolve,reject)=>{
 
-        search?.reject(
-          new Error("Stockfish search timed out.")
+        currentSearch={
+
+          resolve,
+          reject,
+
+          exactResult:null,
+          boundResult:null,
+
+          timer:setTimeout(
+            ()=>{
+
+              if(worker){
+
+                worker.postMessage(
+                  "stop"
+                );
+              }
+
+
+              const search=
+                currentSearch;
+
+              currentSearch=null;
+
+
+              search?.reject(
+                new Error(
+                  "Stockfish search timed out."
+                )
+              );
+
+            },
+            180000
+          )
+        };
+
+
+        worker.postMessage(
+          go
         );
-      },180000)
-    };
-
-    worker.postMessage(go);
-  });
-
-  result.command=positionCommand(rootFen,moves);
-  result.goCommand=go;
-  result.audit=auditResult;
-
-  engineCache.set(signature,result);
-
-  return result;
-}
-
-async function runExactSearch(args){
-  let result=await runRawSearch({
-    ...args,
-    nodes:PRIMARY_NODES
-  });
-
-  if(result.exact)return result;
-
-  boundRetries++;
-  updateStats();
-
-  result=await runRawSearch({
-    ...args,
-    nodes:RETRY_NODES,
-    audit:false
-  });
-
-  result.retriedForBound=true;
-
-  return result;
-}
-
-function rootLoss(best,played){
-  const bestExpected=expectedFromWdl(best.wdl);
-  const playedExpected=expectedFromWdl(played.wdl);
-
-  const wdlLoss=
-    bestExpected===null||
-    playedExpected===null
-      ?null
-      :Math.max(0,bestExpected-playedExpected);
-
-  let cpLoss=null;
-  let mateState="none";
-  let badges=[];
-
-  if(
-    best.scoreType==="cp"&&
-    played.scoreType==="cp"
-  ){
-    cpLoss=Math.max(
-      0,
-      best.scoreValue-played.scoreValue
+      }
     );
-  }else if(
-    best.scoreType==="mate"&&
-    best.scoreValue>0&&
-    !(
-      played.scoreType==="mate"&&
-      played.scoreValue>0
-    )
-  ){
-    mateState="missedForcedMate";
-    badges.push("Missed mate");
-  }else if(
-    !(
-      best.scoreType==="mate"&&
-      best.scoreValue<0
-    )&&
-    played.scoreType==="mate"&&
-    played.scoreValue<0
-  ){
-    mateState="allowedForcedMate";
-  }else if(
-    best.scoreType==="mate"&&
-    played.scoreType==="mate"&&
-    best.scoreValue>0&&
-    played.scoreValue>0
-  ){
-    mateState="bothForceMate";
-    badges.push("Forced mate");
-  }else if(
-    best.scoreType==="mate"&&
-    played.scoreType==="mate"&&
-    best.scoreValue<0&&
-    played.scoreValue<0
-  ){
-    mateState="bothLoseByMate";
-  }else{
-    mateState="mixedScore";
+
+
+  result.command=
+    positionCommand(
+      rootFen,
+      moves
+    );
+
+
+  result.goCommand=
+    go;
+
+
+  result.audit=
+    auditResult;
+
+
+  engineCache.set(
+    signature,
+    result
+  );
+
+
+  return result;
+}
+
+
+async function runExactSearch(
+  args
+){
+
+  let result=
+    await runRawSearch({
+
+      ...args,
+
+      nodes:
+        PRIMARY_NODES
+    });
+
+
+  if(result.exact){
+
+    return result;
   }
 
+
+  boundRetries++;
+
+  updateStats();
+
+
+  result=
+    await runRawSearch({
+
+      ...args,
+
+      nodes:
+        RETRY_NODES,
+
+      audit:false
+    });
+
+
+  result.retriedForBound=
+    true;
+
+
+  return result;
+}
+
+
+/* ============================================================
+   MOVE LOSS
+   ============================================================ */
+
+function rootLoss(
+  best,
+  played
+){
+
+  const bestExpected=
+    expectedFromWdl(
+      best.wdl
+    );
+
+
+  const playedExpected=
+    expectedFromWdl(
+      played.wdl
+    );
+
+
+  const wdlLoss=
+
+    bestExpected===null ||
+    playedExpected===null
+
+      ?null
+
+      :Math.max(
+          0,
+          bestExpected-
+          playedExpected
+        );
+
+
+  let cpLoss=null;
+
+  let mateState="none";
+
+  let badges=[];
+
+
+  if(
+    best.scoreType==="cp" &&
+    played.scoreType==="cp"
+  ){
+
+    cpLoss=
+      Math.max(
+        0,
+        best.scoreValue-
+        played.scoreValue
+      );
+
+  }else if(
+
+    best.scoreType==="mate" &&
+    best.scoreValue>0 &&
+
+    !(
+      played.scoreType==="mate" &&
+      played.scoreValue>0
+    )
+
+  ){
+
+    mateState=
+      "missedForcedMate";
+
+    badges.push(
+      "Missed mate"
+    );
+
+  }else if(
+
+    !(
+      best.scoreType==="mate" &&
+      best.scoreValue<0
+    ) &&
+
+    played.scoreType==="mate" &&
+    played.scoreValue<0
+
+  ){
+
+    mateState=
+      "allowedForcedMate";
+
+  }else if(
+
+    best.scoreType==="mate" &&
+    played.scoreType==="mate" &&
+    best.scoreValue>0 &&
+    played.scoreValue>0
+
+  ){
+
+    mateState=
+      "bothForceMate";
+
+    badges.push(
+      "Forced mate"
+    );
+
+  }else if(
+
+    best.scoreType==="mate" &&
+    played.scoreType==="mate" &&
+    best.scoreValue<0 &&
+    played.scoreValue<0
+
+  ){
+
+    mateState=
+      "bothLoseByMate";
+
+  }else{
+
+    mateState=
+      "mixedScore";
+  }
+
+
   return{
+
     cpLoss,
     wdlLoss,
     bestExpected,
@@ -925,129 +1822,233 @@ function rootLoss(best,played){
   };
 }
 
-function winningPositionFactor(bestRootCp,playedRootCp){
+
+/* ============================================================
+   WINNING POSITION FACTOR
+   ============================================================ */
+
+function winningPositionFactor(
+  bestRootCp,
+  playedRootCp
+){
+
   const retainedAdvantage=
-    Math.min(bestRootCp,playedRootCp);
+    Math.min(
+      bestRootCp,
+      playedRootCp
+    );
 
-  if(retainedAdvantage<150)return 1.00;
 
-  if(retainedAdvantage<300){
-    return 1.00-
-      (retainedAdvantage-150)/150*0.10;
+  if(
+    retainedAdvantage<150
+  ){
+    return 1.00;
   }
 
-  if(retainedAdvantage<500){
-    return 0.90-
-      (retainedAdvantage-300)/200*0.30;
+
+  if(
+    retainedAdvantage<300
+  ){
+
+    return(
+      1.00 -
+      (
+        retainedAdvantage-150
+      )/
+      150*
+      0.10
+    );
   }
+
+
+  if(
+    retainedAdvantage<500
+  ){
+
+    return(
+      0.90 -
+      (
+        retainedAdvantage-300
+      )/
+      200*
+      0.30
+    );
+  }
+
 
   return 0.60;
 }
 
+
+/* ============================================================
+   MOVE ACCURACY
+   ============================================================ */
+
 function moveAccuracy({
+
   playedIsBest,
   loss,
   best,
   played
+
 }){
+
   /*
     A genuinely best defensive move remains 100% accurate,
     even when the player is already losing by forced mate.
   */
-  if(playedIsBest)return 100;
 
-  if(loss.mateState==="bothForceMate"){
+  if(playedIsBest){
     return 100;
   }
 
+
   if(
-    loss.mateState==="missedForcedMate"||
+    loss.mateState==="bothForceMate"
+  ){
+    return 100;
+  }
+
+
+  if(
+    loss.mateState==="missedForcedMate" ||
     loss.mateState==="allowedForcedMate"
   ){
     return 0;
   }
 
+
   if(
-    typeof loss.cpLoss==="number"&&
-    Number.isFinite(loss.cpLoss)
+    typeof loss.cpLoss==="number" &&
+    Number.isFinite(
+      loss.cpLoss
+    )
   ){
+
     let factor=1.00;
 
+
     if(
-      best.scoreType==="cp"&&
+      best.scoreType==="cp" &&
       played.scoreType==="cp"
     ){
-      factor=winningPositionFactor(
-        best.scoreValue,
-        played.scoreValue
-      );
+
+      factor=
+        winningPositionFactor(
+          best.scoreValue,
+          played.scoreValue
+        );
     }
 
+
     const effectivePawnLoss=
-      Math.max(0,loss.cpLoss)*
+
+      Math.max(
+        0,
+        loss.cpLoss
+      )*
+
       factor/
+
       100;
 
+
     return Math.max(
+
       0,
+
       Math.min(
+
         100,
-        100*Math.exp(
-          -ACCURACY_DECAY*effectivePawnLoss
+
+        100*
+        Math.exp(
+          -ACCURACY_DECAY*
+          effectivePawnLoss
         )
       )
     );
   }
 
-  /*
-    Both available lines lose by forced mate, but the played
-    move was not Stockfish's best defensive move.
 
-    The former rule incorrectly assigned 100% to every such
-    move. No fabricated replacement percentage is inserted.
+  /*
+    Both available lines lose by forced mate, but the
+    played move was not Stockfish's best defensive move.
+
+    It remains unscored until mate-loss calibration
+    is determined.
   */
-  if(loss.mateState==="bothLoseByMate"){
+
+  if(
+    loss.mateState==="bothLoseByMate"
+  ){
     return null;
   }
+
 
   return null;
 }
 
+
+/* ============================================================
+   MOVE CLASSIFICATION
+   ============================================================ */
+
 function classifyMove({
+
   playedIsBest,
   loss,
   best,
   played
+
 }){
-  const badges=[...loss.badges];
+
+  const badges=[
+    ...loss.badges
+  ];
+
 
   if(
-    loss.mateState==="missedForcedMate"||
+    loss.mateState==="missedForcedMate" ||
     loss.mateState==="allowedForcedMate"
   ){
+
     return{
       quality:"Blunder",
       badges
     };
   }
 
+
   if(playedIsBest){
+
     return{
       quality:"Best",
       badges
     };
   }
 
-  if(loss.mateState==="bothForceMate"){
+
+  if(
+    loss.mateState==="bothForceMate"
+  ){
+
     return{
       quality:"Best",
       badges
     };
   }
 
-  if(loss.mateState==="bothLoseByMate"){
+
+  if(
+    loss.mateState==="bothLoseByMate"
+  ){
+
     return{
-      quality:"Inaccuracy",
+
+      quality:
+        "Inaccuracy",
+
       badges:[
         ...badges,
         "Already lost",
@@ -1056,9 +2057,16 @@ function classifyMove({
     };
   }
 
-  if(loss.cpLoss===null){
+
+  if(
+    loss.cpLoss===null
+  ){
+
     return{
-      quality:"Inaccuracy",
+
+      quality:
+        "Inaccuracy",
+
       badges:[
         ...badges,
         "Mixed score types"
@@ -1066,52 +2074,76 @@ function classifyMove({
     };
   }
 
-  const cp=loss.cpLoss;
-  const wdl=loss.wdlLoss;
+
+  const cp=
+    loss.cpLoss;
+
+  const wdl=
+    loss.wdlLoss;
+
 
   if(
-    cp<=15&&
-    (wdl===null||wdl<=0.01)
+    cp<=15 &&
+    (
+      wdl===null ||
+      wdl<=0.01
+    )
   ){
+
     return{
       quality:"Best",
       badges
     };
   }
 
+
   if(
-    cp<=35&&
-    (wdl===null||wdl<=0.02)
+    cp<=35 &&
+    (
+      wdl===null ||
+      wdl<=0.02
+    )
   ){
+
     return{
       quality:"Excellent",
       badges
     };
   }
 
+
   if(
-    cp<=80&&
-    (wdl===null||wdl<=0.06)
+    cp<=80 &&
+    (
+      wdl===null ||
+      wdl<=0.06
+    )
   ){
+
     return{
       quality:"Good",
       badges
     };
   }
 
+
   if(cp<=175){
+
     return{
       quality:"Inaccuracy",
       badges
     };
   }
 
+
   if(cp<=350){
+
     return{
       quality:"Mistake",
       badges
     };
   }
+
 
   return{
     quality:"Blunder",
@@ -1119,92 +2151,271 @@ function classifyMove({
   };
 }
 
-function addCell(parent,value,className=""){
-  const cell=document.createElement("td");
-  cell.textContent=value;
+
+/* ============================================================
+   TABLE HELPERS
+   ============================================================ */
+
+function addCell(
+  parent,
+  value,
+  className=""
+){
+
+  const cell=
+    document.createElement(
+      "td"
+    );
+
+
+  cell.textContent=
+    value;
+
 
   if(className){
-    cell.className=className;
+
+    cell.className=
+      className;
   }
 
-  parent.appendChild(cell);
+
+  parent.appendChild(
+    cell
+  );
+
+
   return cell;
 }
 
-function addBadges(cell,badges){
-  for(const badge of badges){
-    const span=document.createElement("span");
+
+function addBadges(
+  cell,
+  badges
+){
+
+  for(
+    const badge
+    of badges
+  ){
+
+    const span=
+      document.createElement(
+        "span"
+      );
+
 
     span.className=
       "badge "+
-      (badge==="Book"?"badge-book":"");
+      (
+        badge==="Book"
+          ?"badge-book"
+          :""
+      );
 
-    span.textContent=badge;
-    cell.appendChild(span);
+
+    span.textContent=
+      badge;
+
+
+    cell.appendChild(
+      span
+    );
   }
 }
 
-function createGameView(number,history){
-  const box=document.createElement("div");
-  box.className="box";
 
-  const title=document.createElement("h2");
-  title.textContent="Game "+number;
-  box.appendChild(title);
+/* ============================================================
+   GAME VIEW
+   ============================================================ */
 
-  const link=document.createElement("a");
+function createGameView(
+  number,
+  history
+){
+
+  const box=
+    document.createElement(
+      "div"
+    );
+
+  box.className=
+    "box";
+
+
+  const title=
+    document.createElement(
+      "h2"
+    );
+
+  title.textContent=
+    "Game "+number;
+
+  box.appendChild(
+    title
+  );
+
+
+  const link=
+    document.createElement(
+      "a"
+    );
+
 
   link.href=
     "https://lichess.org/analysis/pgn/"+
     encodeURIComponent(
-      history.map(move=>move.san).join("_")
+      history
+        .map(
+          move=>move.san
+        )
+        .join("_")
     );
 
-  link.target="_blank";
-  link.rel="noopener noreferrer";
-  link.textContent="Open game in Lichess Analysis";
 
-  box.appendChild(link);
+  link.target=
+    "_blank";
 
-  const note=document.createElement("p");
-  note.className="small";
+  link.rel=
+    "noopener noreferrer";
+
+  link.textContent=
+    "Open game in Lichess Analysis";
+
+
+  box.appendChild(
+    link
+  );
+
+
+  const note=
+    document.createElement(
+      "p"
+    );
+
+  note.className=
+    "small";
+
   note.textContent=
     "Stockfish 19 diagnostic: unrestricted root versus forced played-move root, 100,000 nodes each, MultiPV 1, one thread, 128 MB hash.";
 
-  box.appendChild(note);
 
-  const wrap=document.createElement("div");
-  wrap.className="table-wrap";
+  box.appendChild(
+    note
+  );
 
-  const table=document.createElement("table");
-  const head=document.createElement("thead");
-  const headerRow=document.createElement("tr");
 
-  for(const label of[
-    "Ply","Move","Move accuracy","Quality","Badges",
-    "After eval","Best move","Best root","Played root",
-    "CP loss","WDL loss","Search confidence","FEN audit",
-    "Master games","Share","Opening","Diagnostics"
-  ]){
-    const th=document.createElement("th");
-    th.textContent=label;
-    headerRow.appendChild(th);
+  const wrap=
+    document.createElement(
+      "div"
+    );
+
+  wrap.className=
+    "table-wrap";
+
+
+  const table=
+    document.createElement(
+      "table"
+    );
+
+  const head=
+    document.createElement(
+      "thead"
+    );
+
+  const headerRow=
+    document.createElement(
+      "tr"
+    );
+
+
+  for(
+    const label
+    of[
+      "Ply",
+      "Move",
+      "Move accuracy",
+      "Quality",
+      "Badges",
+      "After eval",
+      "Best move",
+      "Best root",
+      "Played root",
+      "CP loss",
+      "WDL loss",
+      "Search confidence",
+      "FEN audit",
+      "Master games",
+      "Share",
+      "Opening",
+      "Diagnostics"
+    ]
+  ){
+
+    const th=
+      document.createElement(
+        "th"
+      );
+
+    th.textContent=
+      label;
+
+    headerRow.appendChild(
+      th
+    );
   }
 
-  head.appendChild(headerRow);
-  table.appendChild(head);
 
-  const tbody=document.createElement("tbody");
+  head.appendChild(
+    headerRow
+  );
 
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  box.appendChild(wrap);
 
-  const summary=document.createElement("div");
-  summary.className="summary";
+  table.appendChild(
+    head
+  );
 
-  box.appendChild(summary);
-  resultsElement.appendChild(box);
+
+  const tbody=
+    document.createElement(
+      "tbody"
+    );
+
+
+  table.appendChild(
+    tbody
+  );
+
+
+  wrap.appendChild(
+    table
+  );
+
+
+  box.appendChild(
+    wrap
+  );
+
+
+  const summary=
+    document.createElement(
+      "div"
+    );
+
+
+  summary.className=
+    "summary";
+
+
+  box.appendChild(
+    summary
+  );
+
+
+  resultsElement.appendChild(
+    box
+  );
+
 
   return{
     tbody,
@@ -1213,52 +2424,134 @@ function createGameView(number,history){
   };
 }
 
-function updateSummary(view){
-  const counts={w:{},b:{}};
-  const accuracies={w:[],b:[]};
 
-  for(const name of QUALITY_CLASSES){
+/* ============================================================
+   SUMMARY
+   ============================================================ */
+
+function updateSummary(
+  view
+){
+
+  const counts={
+    w:{},
+    b:{}
+  };
+
+
+  const accuracies={
+    w:[],
+    b:[]
+  };
+
+
+  for(
+    const name
+    of QUALITY_CLASSES
+  ){
+
     counts.w[name]=0;
     counts.b[name]=0;
   }
 
-  for(const row of view.rows){
+
+  for(
+    const row
+    of view.rows
+  ){
+
     counts[row.color][row.quality]++;
 
-    if(typeof row.moveAccuracy==="number"){
-      accuracies[row.color].push(row.moveAccuracy);
+
+    if(
+      typeof row.moveAccuracy==="number"
+    ){
+
+      accuracies[row.color]
+        .push(
+          row.moveAccuracy
+        );
     }
   }
 
+
   view.summary.replaceChildren();
 
-  const item=(text,className="")=>{
-    const div=document.createElement("div");
-    div.textContent=text;
 
-    if(className){
-      div.className=className;
-    }
+  const item=
+    (text,className="")=>{
 
-    view.summary.appendChild(div);
-  };
+      const div=
+        document.createElement(
+          "div"
+        );
 
-  const average=color=>
-    accuracies[color].length
-      ?accuracies[color].reduce(
-          (total,value)=>total+value,
-          0
-        )/accuracies[color].length
-      :null;
 
-  item("Metric","summary-header");
-  item("White","summary-header");
-  item("Black","summary-header");
+      div.textContent=
+        text;
 
-  item("Accuracy");
 
-  for(const color of["w","b"]){
-    const value=average(color);
+      if(className){
+
+        div.className=
+          className;
+      }
+
+
+      view.summary.appendChild(
+        div
+      );
+    };
+
+
+  const average=
+    color=>
+
+      accuracies[color].length
+
+        ?accuracies[color]
+          .reduce(
+            (
+              total,
+              value
+            )=>
+              total+value,
+            0
+          )/
+          accuracies[color].length
+
+        :null;
+
+
+  item(
+    "Metric",
+    "summary-header"
+  );
+
+  item(
+    "White",
+    "summary-header"
+  );
+
+  item(
+    "Black",
+    "summary-header"
+  );
+
+
+  item(
+    "Accuracy"
+  );
+
+
+  for(
+    const color
+    of["w","b"]
+  ){
+
+    const value=
+      average(color);
+
 
     item(
       value===null
@@ -1267,260 +2560,628 @@ function updateSummary(view){
     );
   }
 
-  for(const name of QUALITY_CLASSES){
-    item(name,name);
-    item(counts.w[name]);
-    item(counts.b[name]);
+
+  for(
+    const name
+    of QUALITY_CLASSES
+  ){
+
+    item(
+      name,
+      name
+    );
+
+    item(
+      counts.w[name]
+    );
+
+    item(
+      counts.b[name]
+    );
   }
 }
 
-async function appendResult(view,row){
-  view.rows.push(row);
 
-  const tr=document.createElement("tr");
+/* ============================================================
+   RESULT ROW
+   ============================================================ */
 
-  addCell(tr,row.ply);
-  addCell(tr,`${row.san} (${row.uci})`);
+async function appendResult(
+  view,
+  row
+){
+
+  view.rows.push(
+    row
+  );
+
+
+  const tr=
+    document.createElement(
+      "tr"
+    );
+
 
   addCell(
     tr,
+    row.ply
+  );
+
+
+  addCell(
+    tr,
+    `${row.san} (${row.uci})`
+  );
+
+
+  addCell(
+
+    tr,
+
     row.moveAccuracy===null
       ?"-"
       :row.moveAccuracy.toFixed(1)+"%"
   );
 
-  addCell(tr,row.quality,row.quality);
-
-  const badgeCell=addCell(tr,"");
-  addBadges(badgeCell,row.badges);
-
-  addCell(tr,row.afterEval);
-  addCell(tr,row.bestMove||"-");
-  addCell(tr,row.bestRoot);
-  addCell(tr,row.playedRoot);
 
   addCell(
     tr,
+    row.quality,
+    row.quality
+  );
+
+
+  const badgeCell=
+    addCell(
+      tr,
+      ""
+    );
+
+
+  addBadges(
+    badgeCell,
+    row.badges
+  );
+
+
+  addCell(
+    tr,
+    row.afterEval
+  );
+
+
+  addCell(
+    tr,
+    row.bestMove||"-"
+  );
+
+
+  addCell(
+    tr,
+    row.bestRoot
+  );
+
+
+  addCell(
+    tr,
+    row.playedRoot
+  );
+
+
+  addCell(
+
+    tr,
+
     row.cpLoss===null
       ?"-"
       :(row.cpLoss/100).toFixed(2)
   );
 
+
   addCell(
+
     tr,
+
     row.wdlLoss===null
       ?"-"
       :row.wdlLoss.toFixed(3)
   );
 
+
   addCell(
+
     tr,
+
     row.confidence,
+
     row.confidence==="Exact"
       ?""
       :"confidence-low"
   );
 
-  addCell(
-    tr,
-    row.audit?"PASS":"FAIL",
-    row.audit?"audit-ok":"audit-bad"
-  );
 
   addCell(
+
     tr,
+
+    row.audit
+      ?"PASS"
+      :"FAIL",
+
+    row.audit
+      ?"audit-ok"
+      :"audit-bad"
+  );
+
+
+  addCell(
+
+    tr,
+
     row.masterGames===null
       ?"-"
       :row.masterGames.toLocaleString()
   );
 
+
   addCell(
+
     tr,
+
     row.share===null
       ?"-"
       :row.share.toFixed(2)+"%"
   );
 
+
   addCell(
+
     tr,
+
     row.opening
-      ?(row.opening.eco+" "+row.opening.name).trim()
+      ?(
+          row.opening.eco+
+          " "+
+          row.opening.name
+        ).trim()
       :"-"
   );
 
-  const diagnosticCell=addCell(tr,"");
-  const details=document.createElement("details");
-  const detailsSummary=document.createElement("summary");
-  const pre=document.createElement("pre");
 
-  detailsSummary.textContent="Engine details";
-  pre.textContent=row.diagnostic;
+  const diagnosticCell=
+    addCell(
+      tr,
+      ""
+    );
 
-  details.append(detailsSummary,pre);
-  diagnosticCell.append(details);
-  view.tbody.appendChild(tr);
 
-  updateSummary(view);
+  const details=
+    document.createElement(
+      "details"
+    );
+
+
+  const detailsSummary=
+    document.createElement(
+      "summary"
+    );
+
+
+  const pre=
+    document.createElement(
+      "pre"
+    );
+
+
+  detailsSummary.textContent=
+    "Engine details";
+
+
+  pre.textContent=
+    row.diagnostic;
+
+
+  details.append(
+    detailsSummary,
+    pre
+  );
+
+
+  diagnosticCell.append(
+    details
+  );
+
+
+  view.tbody.appendChild(
+    tr
+  );
+
+
+  updateSummary(
+    view
+  );
+
+
   updateStats();
 
-  await new Promise(resolve=>setTimeout(resolve,0));
+
+  await new Promise(
+    resolve=>
+      setTimeout(
+        resolve,
+        0
+      )
+  );
 }
 
-async function analyseGame(pgn,number){
-  const parsed=new Chess();
 
-  parsed.loadPgn(pgn,{strict:false});
+/* ============================================================
+   ANALYSE GAME
+   ============================================================ */
 
-  const history=parsed.history({verbose:true});
+async function analyseGame(
+  pgn,
+  number
+){
+
+  const parsed=
+    new Chess();
+
+
+  parsed.loadPgn(
+    pgn,
+    {
+      strict:false
+    }
+  );
+
+
+  const history=
+    parsed.history({
+      verbose:true
+    });
+
 
   if(!history.length){
-    throw new Error(`Game ${number} contains no moves.`);
+
+    throw new Error(
+      `Game ${number} contains no moves.`
+    );
   }
+
 
   await startNewGame();
 
-  const rootFen=history[0].before;
-  const replay=new Chess(rootFen);
+
+  const rootFen=
+    history[0].before;
+
+
+  const replay=
+    new Chess(
+      rootFen
+    );
+
+
   const moves=[];
-  const view=createGameView(number,history);
+
+
+  const view=
+    createGameView(
+      number,
+      history
+    );
+
 
   let stillInBook=true;
+
   let latestOpening=null;
 
-  for(let index=0;index<history.length;index++){
+
+  for(
+    let index=0;
+    index<history.length;
+    index++
+  ){
+
     checkStopped();
 
-    const original=history[index];
-    const preFen=replay.fen();
-    const whiteToMove=replay.turn()==="w";
-    const played=replay.move(original.san);
-    const playedUci=moveToUci(played);
-    const afterMoves=moves.concat(playedUci);
-    const afterFen=replay.fen();
-    const checkmate=replay.isCheckmate();
-    const drawn=!checkmate&&replay.isDraw();
+
+    const original=
+      history[index];
+
+
+    const preFen=
+      replay.fen();
+
+
+    const whiteToMove=
+      replay.turn()==="w";
+
+
+    const played=
+      replay.move(
+        original.san
+      );
+
+
+    if(!played){
+
+      throw new Error(
+        `Could not replay move ${index+1}: ${original.san}`
+      );
+    }
+
+
+    const playedUci=
+      moveToUci(
+        played
+      );
+
+
+    const afterMoves=
+      moves.concat(
+        playedUci
+      );
+
+
+    const afterFen=
+      replay.fen();
+
+
+    const checkmate=
+      replay.isCheckmate();
+
+
+    const drawn=
+      !checkmate &&
+      replay.isDraw();
+
 
     let isBook=false;
+
     let masterGames=null;
+
     let share=null;
 
-    if(stillInBook&&afterMoves.length<=50){
+
+    if(
+      stillInBook &&
+      afterMoves.length<=50
+    ){
+
       statusElement.textContent=
         `Game ${number}: checking opening ${played.san}...`;
 
-      const beforeData=await getMasterPosition(
-        rootFen,
-        moves
-      );
 
-      const entry=(beforeData.moves||[]).find(candidate=>
-        String(candidate.uci||"").toLowerCase()===playedUci
-      );
-
-      if(entry){
-        const afterData=await getMasterPosition(
+      const beforeData=
+        await getMasterPosition(
           rootFen,
-          afterMoves
+          moves
         );
 
-        const opening=normaliseOpening(afterData.opening);
+
+      const entry=
+        (
+          beforeData.moves||[]
+        ).find(
+          candidate=>
+            String(
+              candidate.uci||""
+            ).toLowerCase()===
+            playedUci
+        );
+
+
+      if(entry){
+
+        const afterData=
+          await getMasterPosition(
+            rootFen,
+            afterMoves
+          );
+
+
+        const opening=
+          normaliseOpening(
+            afterData.opening
+          );
+
 
         if(opening){
-          latestOpening=opening;
+
+          latestOpening=
+            opening;
         }
 
+
         if(opening){
+
           isBook=true;
-          masterGames=gameCount(entry);
 
-          const total=gameCount(beforeData);
 
-          share=total
-            ?masterGames/total*100
-            :0;
+          masterGames=
+            gameCount(
+              entry
+            );
+
+
+          const total=
+            gameCount(
+              beforeData
+            );
+
+
+          share=
+            total
+              ?masterGames/
+                total*
+                100
+              :0;
+
         }else{
+
           stillInBook=false;
         }
+
       }else{
+
         stillInBook=false;
       }
     }
+
 
     statusElement.textContent=
       `Game ${number}: analysing ${played.san} `+
       `(${index+1}/${history.length})...`;
 
-    const best=await runExactSearch({
-      rootFen,
-      moves,
-      expectedFen:preFen
-    });
 
-    const playedIsBest=
-      best.bestMove===playedUci;
+    const best=
+      await runExactSearch({
 
-    const forced=playedIsBest
-      ?best
-      :await runExactSearch({
-          rootFen,
-          moves,
-          expectedFen:preFen,
-          searchMoves:[playedUci],
-          audit:false
-        });
-
-    const loss=rootLoss(best,forced);
-
-    const classification=classifyMove({
-      playedIsBest,
-      loss,
-      best,
-      played:forced
-    });
-
-    const accuracy=moveAccuracy({
-      playedIsBest,
-      loss,
-      best,
-      played:forced
-    });
-
-    let afterResult=null;
-    let afterEval;
-
-    if(checkmate){
-      afterEval=whiteToMove?"+M0":"-M0";
-    }else if(drawn){
-      afterEval="0.00";
-    }else{
-      afterResult=await runExactSearch({
         rootFen,
-        moves:afterMoves,
-        expectedFen:afterFen
+        moves,
+
+        expectedFen:
+          preFen
       });
 
-      afterEval=formatWhiteDisplay(
-        afterResult,
-        !whiteToMove
+
+    const playedIsBest=
+      best.bestMove===
+      playedUci;
+
+
+    const forced=
+      playedIsBest
+
+        ?best
+
+        :await runExactSearch({
+
+            rootFen,
+            moves,
+
+            expectedFen:
+              preFen,
+
+            searchMoves:[
+              playedUci
+            ],
+
+            audit:false
+          });
+
+
+    const loss=
+      rootLoss(
+        best,
+        forced
       );
+
+
+    const classification=
+      classifyMove({
+
+        playedIsBest,
+        loss,
+        best,
+
+        played:
+          forced
+      });
+
+
+    const accuracy=
+      moveAccuracy({
+
+        playedIsBest,
+        loss,
+        best,
+
+        played:
+          forced
+      });
+
+
+    let afterResult=null;
+
+    let afterEval;
+
+
+    if(checkmate){
+
+      afterEval=
+        whiteToMove
+          ?"+M0"
+          :"-M0";
+
+    }else if(drawn){
+
+      afterEval=
+        "0.00";
+
+    }else{
+
+      afterResult=
+        await runExactSearch({
+
+          rootFen,
+
+          moves:
+            afterMoves,
+
+          expectedFen:
+            afterFen
+        });
+
+
+      afterEval=
+        formatWhiteDisplay(
+          afterResult,
+          !whiteToMove
+        );
     }
 
+
     const badges=[
-      ...(isBook?["Book"]:[]),
+
+      ...(
+        isBook
+          ?["Book"]
+          :[]
+      ),
+
       ...classification.badges
     ];
 
-    const exact=
-      best.exact&&
-      forced.exact&&
-      (afterResult?.exact??true);
 
-    const auditOk=Boolean(
-      best.audit?.ok&&
-      (afterResult?.audit?.ok??true)
-    );
+    const exact=
+
+      best.exact &&
+
+      forced.exact &&
+
+      (
+        afterResult?.exact ??
+        true
+      );
+
+
+    const auditOk=
+      Boolean(
+
+        best.audit?.ok &&
+
+        (
+          afterResult?.audit?.ok ??
+          true
+        )
+      );
+
 
     const diagnostic=[
+
       `Pre-move position: ${best.command}`,
 
       `Pre-move FEN: ${best.audit?.actual||preFen}`,
@@ -1530,22 +3191,38 @@ async function analyseGame(pgn,number){
       `Played search: ${forced.goCommand}\n${forced.raw}`,
 
       afterResult
+
         ?`After-position display search: ${afterResult.goCommand}\n`+
          `After FEN: ${afterResult.audit?.actual||afterFen}\n`+
          `${afterResult.raw}`
-        :`After position: ${checkmate?"checkmate":"draw"}`,
 
-      `Loss: cp=${loss.cpLoss===null?"n/a":loss.cpLoss}, `+
-      `wdl=${loss.wdlLoss===null?"n/a":loss.wdlLoss.toFixed(3)}, `+
-      `mateState=${loss.mateState}`,
+        :`After position: ${
+            checkmate
+              ?"checkmate"
+              :"draw"
+          }`,
+
+      `Loss: cp=${
+        loss.cpLoss===null
+          ?"n/a"
+          :loss.cpLoss
+      }, wdl=${
+        loss.wdlLoss===null
+          ?"n/a"
+          :loss.wdlLoss.toFixed(3)
+      }, mateState=${
+        loss.mateState
+      }`,
 
       `Winning-position factor: ${
-        best.scoreType==="cp"&&
+        best.scoreType==="cp" &&
         forced.scoreType==="cp"
+
           ?winningPositionFactor(
               best.scoreValue,
               forced.scoreValue
             ).toFixed(3)
+
           :"n/a"
       }`,
 
@@ -1556,126 +3233,266 @@ async function analyseGame(pgn,number){
       }`,
 
       `NNUE: ${
-        engineMetadata.nnueMessages.at(-1)||
+        engineMetadata.nnueMessages.at(-1) ||
         "No activation line captured"
       }`,
 
       `Critical errors: ${
         engineMetadata.criticalErrors.length
       }`
-    ].join("\n\n");
 
-    await appendResult(view,{
-      ply:index+1,
-      color:played.color,
-      san:played.san,
-      uci:playedUci,
-      quality:isBook
-        ?"Book"
-        :classification.quality,
-      moveAccuracy:accuracy,
-      badges,
-      afterEval,
-      bestMove:best.bestMove,
-      bestRoot:formatRootScore(best),
-      playedRoot:formatRootScore(forced),
-      cpLoss:loss.cpLoss,
-      wdlLoss:loss.wdlLoss,
-      confidence:exact
-        ?"Exact"
-        :"Bound result",
-      audit:auditOk,
-      masterGames,
-      share,
-      opening:latestOpening,
-      diagnostic
-    });
+    ].join(
+      "\n\n"
+    );
 
-    moves.push(playedUci);
+
+    await appendResult(
+      view,
+      {
+
+        ply:
+          index+1,
+
+        color:
+          played.color,
+
+        san:
+          played.san,
+
+        uci:
+          playedUci,
+
+        quality:
+          isBook
+            ?"Book"
+            :classification.quality,
+
+        moveAccuracy:
+          accuracy,
+
+        badges,
+
+        afterEval,
+
+        bestMove:
+          best.bestMove,
+
+        bestRoot:
+          formatRootScore(
+            best
+          ),
+
+        playedRoot:
+          formatRootScore(
+            forced
+          ),
+
+        cpLoss:
+          loss.cpLoss,
+
+        wdlLoss:
+          loss.wdlLoss,
+
+        confidence:
+          exact
+            ?"Exact"
+            :"Bound result",
+
+        audit:
+          auditOk,
+
+        masterGames,
+
+        share,
+
+        opening:
+          latestOpening,
+
+        diagnostic
+      }
+    );
+
+
+    moves.push(
+      playedUci
+    );
   }
 }
 
-analyseButton.addEventListener("click",async()=>{
-  if(running)return;
 
-  const pgns=splitPGNs(pgnInput.value);
+/* ============================================================
+   ANALYSE BUTTON
+   ============================================================ */
 
-  if(!pgns.length){
-    statusElement.textContent="Paste at least one PGN.";
-    return;
+analyseButton.addEventListener(
+  "click",
+  async()=>{
+
+    if(running){
+      return;
+    }
+
+
+    const pgns=
+      splitPGNs(
+        pgnInput.value
+      );
+
+
+    if(!pgns.length){
+
+      statusElement.textContent=
+        "Paste at least one PGN.";
+
+      return;
+    }
+
+
+    stopped=false;
+    running=true;
+
+
+    openingRequests=0;
+    openingCacheHits=0;
+
+    engineSearches=0;
+    engineCacheHits=0;
+
+    fenAudits=0;
+    fenFailures=0;
+
+    boundRetries=0;
+
+
+    engineMetadata.criticalErrors=[];
+
+    engineMetadata.nnueMessages=[];
+
+
+    analyseButton.disabled=
+      true;
+
+    stopButton.disabled=
+      false;
+
+
+    resultsElement.replaceChildren();
+
+
+    updateStats();
+
+
+    try{
+
+      statusElement.textContent=
+        "Checking Kastled login...";
+
+
+      await getSession();
+
+
+      await loadChessParser();
+
+
+      for(
+        let index=0;
+        index<pgns.length;
+        index++
+      ){
+
+        checkStopped();
+
+
+        await analyseGame(
+          pgns[index],
+          index+1
+        );
+      }
+
+
+      statusElement.textContent=
+
+        `Analysis complete. FEN audits: `+
+
+        `${fenAudits-fenFailures}/${fenAudits} passed.`;
+
+
+    }catch(error){
+
+      console.error(
+        error
+      );
+
+
+      statusElement.textContent=
+        stopped
+
+          ?"Stopped. Completed results remain visible."
+
+          :"Error: "+
+           error.message;
+
+
+    }finally{
+
+      running=false;
+
+      analyseButton.disabled=
+        false;
+
+      stopButton.disabled=
+        true;
+
+
+      updateStats();
+    }
   }
+);
 
-  stopped=false;
-  running=true;
 
-  openingRequests=0;
-  openingCacheHits=0;
-  engineSearches=0;
-  engineCacheHits=0;
-  fenAudits=0;
-  fenFailures=0;
-  boundRetries=0;
+/* ============================================================
+   STOP BUTTON
+   ============================================================ */
 
-  engineMetadata.criticalErrors=[];
-  engineMetadata.nnueMessages=[];
+stopButton.addEventListener(
+  "click",
+  ()=>{
 
-  analyseButton.disabled=true;
-  stopButton.disabled=false;
+    stopped=true;
 
-  resultsElement.replaceChildren();
 
-  updateStats();
+    if(activeController){
 
-  try{
-    statusElement.textContent="Checking Kastled login...";
+      activeController.abort();
+    }
 
-    await getSession();
-    await loadChessParser();
 
-    for(let index=0;index<pgns.length;index++){
-      checkStopped();
+    if(worker){
 
-      await analyseGame(
-        pgns[index],
-        index+1
+      worker.postMessage(
+        "stop"
       );
     }
 
+
+    resetEngine(
+      "Stopped."
+    );
+
+
     statusElement.textContent=
-      `Analysis complete. FEN audits: `+
-      `${fenAudits-fenFailures}/${fenAudits} passed.`;
-  }catch(error){
-    console.error(error);
-
-    statusElement.textContent=stopped
-      ?"Stopped. Completed results remain visible."
-      :"Error: "+error.message;
-  }finally{
-    running=false;
-    analyseButton.disabled=false;
-    stopButton.disabled=true;
-    updateStats();
+      "Stopping. Completed results remain visible.";
   }
-});
+);
 
-stopButton.addEventListener("click",()=>{
-  stopped=true;
 
-  if(activeController){
-    activeController.abort();
-  }
-
-  if(worker){
-    worker.postMessage("stop");
-  }
-
-  resetEngine("Stopped.");
-
-  statusElement.textContent=
-    "Stopping. Completed results remain visible.";
-});
+/* ============================================================
+   START
+   ============================================================ */
 
 updateStats();
+
 </script>
+
 </body>
 </html>
