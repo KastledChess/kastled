@@ -181,8 +181,27 @@ function retainedWinningMateException(loss,best,played){
     played.scoreType==="cp"&&played.scoreValue>=500&&
     (loss.wdlLoss===null||loss.wdlLoss<=0.01);
 }
-function moveAccuracy({playedIsBest,loss,best,played}){
-  if(playedIsBest||loss.mateState==="bothForceMate")return 100;
+function moveAccuracy({
+  playedIsBest,
+  loss,
+  best,
+  played,
+  verifiedMixedMate=false
+}){
+  if(playedIsBest)return 100;
+
+  if(loss.mateState==="bothForceMate"){
+    if(!verifiedMixedMate)return 100;
+
+    const mateExtension=Math.max(
+      0,
+      Math.abs(played.scoreValue)-Math.abs(best.scoreValue)
+    );
+
+    return Math.max(80,100-2*mateExtension);
+  }
+
+  
   if(retainedWinningMateException(loss,best,played))return 100;
   if(loss.mateState==="missedForcedMate"||loss.mateState==="allowedForcedMate")return 0;
   if(typeof loss.cpLoss==="number"&&Number.isFinite(loss.cpLoss)){
@@ -282,9 +301,9 @@ const accuracy=moveAccuracy({
   playedIsBest,
   loss,
   best,
-  played:forced
-});
-    
+  played:forced,
+  verifiedMixedMate:mateVerification.mateRediscovered
+});    
     
     let afterResult=null,afterEval;
     if(checkmate)afterEval=whiteToMove?"+M0":"-M0";
