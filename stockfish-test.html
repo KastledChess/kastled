@@ -106,6 +106,59 @@ async function auditPosition(rootFen,moves,expectedFen){await initialiseStockfis
 async function runRawSearch({rootFen,moves,expectedFen,searchMoves=[],nodes=PRIMARY_NODES,audit=true}){checkStopped();await initialiseStockfish();const signature=`${rootFen}|${moves.join(" ")}|searchmoves=${searchMoves.join(" ")}|nodes=${nodes}|mpv=${MULTIPV}|hash=${HASH_MB}`;if(engineCache.has(signature)){engineCacheHits++;updateStats();return engineCache.get(signature)}let auditResult=null;if(audit){auditResult=await auditPosition(rootFen,moves,expectedFen);if(!auditResult.ok)throw new Error(`FEN mismatch. Chess.js: ${auditResult.expected} | Stockfish: ${auditResult.actual}`)}await clearHash();worker.postMessage(positionCommand(rootFen,moves));engineSearches++;updateStats();const go=`go nodes ${nodes}`+(searchMoves.length?" searchmoves "+searchMoves.join(" "):"");const result=await new Promise((resolve,reject)=>{currentSearch={resolve,reject,exactResult:null,boundResult:null,timer:setTimeout(()=>{if(worker)worker.postMessage("stop");const search=currentSearch;currentSearch=null;search?.reject(new Error("Stockfish search timed out."))},180000)};worker.postMessage(go)});result.command=positionCommand(rootFen,moves);result.goCommand=go;result.audit=auditResult;engineCache.set(signature,result);return result}
 async function runExactSearch(args){let result=await runRawSearch({...args,nodes:PRIMARY_NODES});if(result.exact)return result;boundRetries++;updateStats();result=await runRawSearch({...args,nodes:RETRY_NODES,audit:false});result.retriedForBound=true;return result}
 
+async function verifyMixedMateResult({
+  rootFen,
+  moves,
+  playedUci,
+  best,
+  forced
+}){
+  const bestExpected=expectedFromWdl(best.wdl);
+  const forcedExpected=expectedFromWdl(forced.wdl);
+
+  const wdlLoss=
+    bestExpected===null||forcedExpected===null
+      ? null
+      : Math.max(0,bestExpected-forcedExpected);
+
+  const requiresVerification=
+    best.scoreType==="mate" &&
+    best.scoreValue>0 &&
+    forced.scoreType==="cp" &&
+    forced.scoreValue>=500 &&
+    (wdlLoss===null||wdlLoss<=0.01);
+
+  if(!requiresVerification){
+    return{
+      result:forced,
+      attempted:false,
+      mateRediscovered:false,
+      originalResult:null
+    };
+  }
+
+  const verified=await runRawSearch({
+    rootFen,
+    moves,
+    expectedFen:"",
+    searchMoves:[playedUci],
+    nodes:RETRY_NODES,
+    audit:false
+  });
+
+  const mateRediscovered=
+    verified.scoreType==="mate" &&
+    verified.scoreValue>0;
+
+  return{
+    result:mateRediscovered?verified:forced,
+    attempted:true,
+    mateRediscovered,
+    originalResult:forced,
+    verifiedResult:verified
+  };
+}  
+
 function rootLoss(best,played){const bestExpected=expectedFromWdl(best.wdl),playedExpected=expectedFromWdl(played.wdl),wdlLoss=bestExpected===null||playedExpected===null?null:Math.max(0,bestExpected-playedExpected);let cpLoss=null,mateState="none",badges=[];
   if(best.scoreType==="cp"&&played.scoreType==="cp")cpLoss=Math.max(0,best.scoreValue-played.scoreValue);
   else if(best.scoreType==="mate"&&best.scoreValue>0&&!(played.scoreType==="mate"&&played.scoreValue>0)){mateState="missedForcedMate";badges.push("Missed mate")}
@@ -177,10 +230,62 @@ async function analyseGame(pgn,number){const parsed=new Chess();parsed.loadPgn(p
     let isBook=false,masterGames=null,share=null;
     if(stillInBook&&afterMoves.length<=50){statusElement.textContent=`Game ${number}: checking opening ${played.san}...`;const beforeData=await getMasterPosition(rootFen,moves),entry=(beforeData.moves||[]).find(candidate=>String(candidate.uci||"").toLowerCase()===playedUci);if(entry){const afterData=await getMasterPosition(rootFen,afterMoves),opening=normaliseOpening(afterData.opening);if(opening)latestOpening=opening;if(opening){isBook=true;masterGames=gameCount(entry);const total=gameCount(beforeData);share=total?masterGames/total*100:0}else stillInBook=false}else stillInBook=false}
     statusElement.textContent=`Game ${number}: analysing ${played.san} (${index+1}/${history.length})...`;
-    const best=await runExactSearch({rootFen,moves,expectedFen:preFen});
-    const playedIsBest=best.bestMove===playedUci;
-    const forced=playedIsBest?best:await runExactSearch({rootFen,moves,expectedFen:preFen,searchMoves:[playedUci],audit:false});
-    const loss=rootLoss(best,forced),classification=classifyMove({playedIsBest,loss,best,played:forced}),accuracy=moveAccuracy({playedIsBest,loss,best,played:forced});
+
+const best=await runExactSearch({
+  rootFen,
+  moves,
+  expectedFen:preFen
+});
+
+const playedIsBest=best.bestMove===playedUci;
+
+let forced=playedIsBest
+  ? best
+  : await runExactSearch({
+      rootFen,
+      moves,
+      expectedFen:preFen,
+      searchMoves:[playedUci],
+      audit:false
+    });
+
+let mateVerification={
+  result:forced,
+  attempted:false,
+  mateRediscovered:false,
+  originalResult:null,
+  verifiedResult:null
+};
+
+if(!playedIsBest){
+  mateVerification=await verifyMixedMateResult({
+    rootFen,
+    moves,
+    playedUci,
+    best,
+    forced
+  });
+
+  forced=mateVerification.result;
+}
+
+const loss=rootLoss(best,forced);
+
+const classification=classifyMove({
+  playedIsBest,
+  loss,
+  best,
+  played:forced
+});
+
+const accuracy=moveAccuracy({
+  playedIsBest,
+  loss,
+  best,
+  played:forced
+});
+    
+    
     let afterResult=null,afterEval;
     if(checkmate)afterEval=whiteToMove?"+M0":"-M0";
     else if(drawn)afterEval="0.00";
