@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chess Move Classification Tester v1.12.2.4</title>
+<title>Chess Move Classification Tester v1.12.2.5</title>
 
 <style>
 body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}
@@ -45,7 +45,7 @@ a{color:#1565c0}
 
 <body>
 
-<h1>Chess Move Classification Tester v1.12.2.4</h1>
+<h1>Chess Move Classification Tester v1.12.2.5</h1>
 
 <div class="box">
 
@@ -58,7 +58,7 @@ Primary searches: 100,000 nodes, MultiPV 1, one thread, 128 MB hash, UCI_ShowWDL
 </p>
 
 <p class="warning">
-Book moves are listed as Book in the move table and summary. Every move is still analysed and contributes to continuous move and game accuracy. Great and Brilliant awards remain disabled until the core loss model is validated. Non-best moves where both continuations lose by forced mate remain unscored pending mate-loss calibration.
+Book moves are listed as Book in the move table and summary. Every move is still analysed and contributes to continuous move and game accuracy. Best is reserved for an exact match with Stockfish's reported best move. Great and Brilliant awards remain disabled until the core loss model is validated. When both continuations lead to forced mate, mate-distance deterioration is converted to an ordinary CP-equivalent loss at 40 centipawns per mate move.
 </p>
 
 <label for="pgnInput"><strong>PGNs</strong></label>
@@ -90,12 +90,14 @@ Starting JavaScript...
    CONFIGURATION
    ============================================================ */
 
-const SUPABASE_URL="https://sgpafvuexdmnbdbvveny.supabase.co";
+const SUPABASE_URL=
+  "https://sgpafvuexdmnbdbvveny.supabase.co";
 
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
 
-const FUNCTION_NAME="lichess-opening";
+const FUNCTION_NAME=
+  "lichess-opening";
 
 const PRIMARY_NODES=100000;
 const RETRY_NODES=200000;
@@ -104,7 +106,30 @@ const HASH_MB=128;
 
 const ACCURACY_DECAY=0.9155;
 
-const STOCKFISH_URL="./Assets/stockfish-19-single.js";
+/*
+  Mate-distance conversion used only when both the best move
+  and the played move retain forced mate for the same side.
+
+  One mate move of deterioration is treated as 40 centipawns.
+
+  Example:
+    Best continuation:   -M4
+    Played continuation: -M1
+
+    The losing side shortened survival by three mate moves.
+
+    Equivalent loss:
+      3 × 40 = 120 cp
+
+    Ordinary accuracy:
+      100 × exp(-0.9155 × 1.20)
+      approximately 33.3%
+*/
+
+const MATE_DISTANCE_CP_PER_MOVE=40;
+
+const STOCKFISH_URL=
+  "./Assets/stockfish-19-single.js";
 
 const PARSER_SOURCES=[
   "https://esm.sh/chess.js@1.4.0",
@@ -208,11 +233,14 @@ statusElement.textContent=
    ============================================================ */
 
 window.addEventListener("error",event=>{
+
   statusElement.textContent=
     `JavaScript error: ${event.message} at line ${event.lineno}`;
 });
 
+
 window.addEventListener("unhandledrejection",event=>{
+
   statusElement.textContent=
     `Error: ${event.reason?.message||String(event.reason)}`;
 });
@@ -247,6 +275,7 @@ function updateEngineMetadata(){
   .filter(Boolean)
   .join(" | ");
 
+
   optionsElement.textContent=[
     engineMetadata.evalFile &&
       `EvalFile: ${engineMetadata.evalFile}`,
@@ -268,6 +297,7 @@ function updateEngineMetadata(){
    ============================================================ */
 
 function checkStopped(){
+
   if(stopped){
     throw new Error("Stopped.");
   }
@@ -282,6 +312,7 @@ function withTimeout(promise,ms,message){
     promise,
 
     new Promise((_,reject)=>{
+
       timer=setTimeout(
         ()=>reject(new Error(message)),
         ms
@@ -289,6 +320,7 @@ function withTimeout(promise,ms,message){
     })
 
   ]).finally(()=>{
+
     clearTimeout(timer);
   });
 }
@@ -344,7 +376,7 @@ function normaliseOpening(opening){
 
   if(
     !opening ||
-    (!opening.eco && !opening.name)
+    (!opening.eco&&!opening.name)
   ){
     return null;
   }
@@ -550,9 +582,8 @@ async function loadChessParser(){
           "Chess parser download timed out."
         );
 
-      if(
-        typeof parser.Chess!=="function"
-      ){
+      if(typeof parser.Chess!=="function"){
+
         throw new Error(
           "Invalid chess parser."
         );
@@ -610,7 +641,8 @@ async function getMasterPosition(
   const controller=
     new AbortController();
 
-  activeController=controller;
+  activeController=
+    controller;
 
   const timer=
     setTimeout(
@@ -694,6 +726,7 @@ async function getMasterPosition(
     }
 
     if(controller.signal.aborted){
+
       throw new Error(
         "Opening request timed out."
       );
@@ -705,9 +738,7 @@ async function getMasterPosition(
 
     clearTimeout(timer);
 
-    if(
-      activeController===controller
-    ){
+    if(activeController===controller){
       activeController=null;
     }
   }
@@ -724,7 +755,8 @@ function resetEngine(
 
   if(currentSearch){
 
-    const search=currentSearch;
+    const search=
+      currentSearch;
 
     currentSearch=null;
 
@@ -737,10 +769,10 @@ function resetEngine(
     );
   }
 
-
   if(readyWaiter){
 
-    const ready=readyWaiter;
+    const ready=
+      readyWaiter;
 
     readyWaiter=null;
 
@@ -753,10 +785,10 @@ function resetEngine(
     );
   }
 
-
   if(fenWaiter){
 
-    const fen=fenWaiter;
+    const fen=
+      fenWaiter;
 
     fenWaiter=null;
 
@@ -769,13 +801,11 @@ function resetEngine(
     );
   }
 
-
   if(worker){
     worker.terminate();
   }
 
   worker=null;
-
   engineInitialisation=null;
 }
 
@@ -792,7 +822,6 @@ function handleEngineLine(line){
     return;
   }
 
-
   if(line.startsWith("id name ")){
 
     engineMetadata.name=
@@ -801,7 +830,6 @@ function handleEngineLine(line){
     updateEngineMetadata();
   }
 
-
   if(line.startsWith("id author ")){
 
     engineMetadata.author=
@@ -809,7 +837,6 @@ function handleEngineLine(line){
 
     updateEngineMetadata();
   }
-
 
   if(
     line.startsWith(
@@ -826,7 +853,6 @@ function handleEngineLine(line){
     updateEngineMetadata();
   }
 
-
   if(
     line.startsWith(
       "option name EvalFileSmall type string default "
@@ -842,7 +868,6 @@ function handleEngineLine(line){
     updateEngineMetadata();
   }
 
-
   if(
     /NNUE|network/i.test(line) &&
     !/option name EvalFile/i.test(line)
@@ -852,6 +877,7 @@ function handleEngineLine(line){
       !engineMetadata.nnueMessages
         .includes(line)
     ){
+
       engineMetadata.nnueMessages
         .push(line);
     }
@@ -859,17 +885,15 @@ function handleEngineLine(line){
     updateEngineMetadata();
   }
 
-
-  if(
-    line.includes("CRITICAL ERROR")
-  ){
+  if(line.includes("CRITICAL ERROR")){
 
     engineMetadata.criticalErrors
       .push(line);
 
     if(currentSearch){
 
-      const search=currentSearch;
+      const search=
+        currentSearch;
 
       currentSearch=null;
 
@@ -885,7 +909,6 @@ function handleEngineLine(line){
     return;
   }
 
-
   if(fenWaiter){
 
     const match=
@@ -895,7 +918,8 @@ function handleEngineLine(line){
 
     if(match){
 
-      const fen=fenWaiter;
+      const fen=
+        fenWaiter;
 
       fenWaiter=null;
 
@@ -909,14 +933,14 @@ function handleEngineLine(line){
     }
   }
 
-
   if(
     readyWaiter &&
     line==="uciok" &&
     readyWaiter.stage==="uci"
   ){
 
-    const ready=readyWaiter;
+    const ready=
+      readyWaiter;
 
     readyWaiter=null;
 
@@ -928,7 +952,6 @@ function handleEngineLine(line){
 
     return;
   }
-
 
   if(
     readyWaiter &&
@@ -936,7 +959,8 @@ function handleEngineLine(line){
     readyWaiter.stage==="ready"
   ){
 
-    const ready=readyWaiter;
+    const ready=
+      readyWaiter;
 
     readyWaiter=null;
 
@@ -949,11 +973,9 @@ function handleEngineLine(line){
     return;
   }
 
-
   if(!currentSearch){
     return;
   }
-
 
   if(
     line.startsWith("info ") &&
@@ -995,7 +1017,6 @@ function handleEngineLine(line){
         )?.[1]||0
       );
 
-
     const cp=
       line.match(
         /\bscore cp (-?\d+)/
@@ -1006,12 +1027,10 @@ function handleEngineLine(line){
         /\bscore mate (-?\d+)/
       );
 
-
     const wdlMatch=
       line.match(
         /\bwdl\s+(\d+)\s+(\d+)\s+(\d+)/
       );
-
 
     const pv=
       line.match(
@@ -1021,14 +1040,12 @@ function handleEngineLine(line){
       ?.trim()
       .split(/\s+/)||[];
 
-
     const bound=
       line.includes(" lowerbound")
         ?"lowerbound"
         :line.includes(" upperbound")
           ?"upperbound"
           :null;
-
 
     if(cp||mate){
 
@@ -1073,27 +1090,23 @@ function handleEngineLine(line){
         raw:line
       };
 
-
       const target=
         bound
           ?"boundResult"
           :"exactResult";
-
 
       if(
         !currentSearch[target] ||
         nodes>=currentSearch[target].nodes
       ){
 
-        currentSearch[target]=candidate;
+        currentSearch[target]=
+          candidate;
       }
     }
   }
 
-
-  if(
-    line.startsWith("bestmove ")
-  ){
+  if(line.startsWith("bestmove ")){
 
     const search=
       currentSearch;
@@ -1104,11 +1117,9 @@ function handleEngineLine(line){
       search.timer
     );
 
-
     const result=
       search.exactResult ||
       search.boundResult;
-
 
     if(!result){
 
@@ -1121,22 +1132,18 @@ function handleEngineLine(line){
       return;
     }
 
-
     result.bestMove=
       line.match(
         /^bestmove\s+(\S+)/
       )?.[1]||"";
-
 
     result.ponder=
       line.match(
         /\bponder\s+(\S+)/
       )?.[1]||"";
 
-
     result.exact=
       !result.bound;
-
 
     search.resolve(
       result
@@ -1160,12 +1167,10 @@ async function waitReady(
     );
   }
 
-
   return new Promise(
     (resolve,reject)=>{
 
       readyWaiter={
-
         resolve,
         reject,
         stage:"ready",
@@ -1180,12 +1185,10 @@ async function waitReady(
                 "Stockfish did not return readyok."
               )
             );
-
           },
           timeout
         )
       };
-
 
       worker.postMessage(
         "isready"
@@ -1199,19 +1202,15 @@ async function initialiseStockfish(){
 
   checkStopped();
 
-
   if(engineInitialisation){
-
     return engineInitialisation;
   }
-
 
   engineInitialisation=
     (async()=>{
 
       statusElement.textContent=
         "Loading full Stockfish 19...";
-
 
       worker=
         new Worker(
@@ -1220,7 +1219,6 @@ async function initialiseStockfish(){
             document.baseURI
           ).href
         );
-
 
       worker.onmessage=
         event=>{
@@ -1234,7 +1232,6 @@ async function initialiseStockfish(){
           );
         };
 
-
       worker.onerror=
         event=>{
 
@@ -1246,7 +1243,6 @@ async function initialiseStockfish(){
           );
         };
 
-
       worker.onmessageerror=
         ()=>{
 
@@ -1255,12 +1251,10 @@ async function initialiseStockfish(){
           );
         };
 
-
       await new Promise(
         (resolve,reject)=>{
 
           readyWaiter={
-
             resolve,
             reject,
             stage:"uci",
@@ -1275,19 +1269,16 @@ async function initialiseStockfish(){
                     "Stockfish did not return uciok."
                   )
                 );
-
               },
               60000
             )
           };
-
 
           worker.postMessage(
             "uci"
           );
         }
       );
-
 
       worker.postMessage(
         "setoption name Threads value 1"
@@ -1311,11 +1302,9 @@ async function initialiseStockfish(){
         "setoption name UCI_LimitStrength value false"
       );
 
-
       await waitReady();
 
     })();
-
 
   try{
 
@@ -1383,7 +1372,6 @@ async function auditPosition(
 
   await initialiseStockfish();
 
-
   if(fenWaiter){
 
     throw new Error(
@@ -1391,25 +1379,21 @@ async function auditPosition(
     );
   }
 
-
   const command=
     positionCommand(
       rootFen,
       moves
     );
 
-
   worker.postMessage(
     command
   );
-
 
   const actual=
     await new Promise(
       (resolve,reject)=>{
 
         fenWaiter={
-
           resolve,
           reject,
 
@@ -1423,12 +1407,10 @@ async function auditPosition(
                   "Stockfish did not return a FEN for the d command."
                 )
               );
-
             },
             10000
           )
         };
-
 
         worker.postMessage(
           "d"
@@ -1436,25 +1418,19 @@ async function auditPosition(
       }
     );
 
-
   fenAudits++;
-
 
   const ok=
     normalizeFen(actual)===
     normalizeFen(expectedFen);
 
-
   if(!ok){
     fenFailures++;
   }
 
-
   updateStats();
 
-
   return{
-
     ok,
 
     expected:
@@ -1477,37 +1453,26 @@ async function auditPosition(
    ============================================================ */
 
 async function runRawSearch({
-
   rootFen,
   moves,
   expectedFen,
   searchMoves=[],
   nodes=PRIMARY_NODES,
   audit=true
-
 }){
 
   checkStopped();
 
   await initialiseStockfish();
 
-
   const signature=
-
     `${rootFen}|${moves.join(" ")}|`+
-
     `searchmoves=${searchMoves.join(" ")}|`+
-
     `nodes=${nodes}|`+
-
     `mpv=${MULTIPV}|`+
-
     `hash=${HASH_MB}`;
 
-
-  if(
-    engineCache.has(signature)
-  ){
+  if(engineCache.has(signature)){
 
     engineCacheHits++;
 
@@ -1518,9 +1483,7 @@ async function runRawSearch({
     );
   }
 
-
   let auditResult=null;
-
 
   if(audit){
 
@@ -1531,7 +1494,6 @@ async function runRawSearch({
         expectedFen
       );
 
-
     if(!auditResult.ok){
 
       throw new Error(
@@ -1541,9 +1503,7 @@ async function runRawSearch({
     }
   }
 
-
   await clearHash();
-
 
   worker.postMessage(
     positionCommand(
@@ -1552,16 +1512,12 @@ async function runRawSearch({
     )
   );
 
-
   engineSearches++;
 
   updateStats();
 
-
   const go=
-
     `go nodes ${nodes}`+
-
     (
       searchMoves.length
         ?" searchmoves "+
@@ -1569,16 +1525,13 @@ async function runRawSearch({
         :""
     );
 
-
   const result=
     await new Promise(
       (resolve,reject)=>{
 
         currentSearch={
-
           resolve,
           reject,
-
           exactResult:null,
           boundResult:null,
 
@@ -1592,24 +1545,20 @@ async function runRawSearch({
                 );
               }
 
-
               const search=
                 currentSearch;
 
               currentSearch=null;
-
 
               search?.reject(
                 new Error(
                   "Stockfish search timed out."
                 )
               );
-
             },
             180000
           )
         };
-
 
         worker.postMessage(
           go
@@ -1617,74 +1566,147 @@ async function runRawSearch({
       }
     );
 
-
   result.command=
     positionCommand(
       rootFen,
       moves
     );
 
-
   result.goCommand=
     go;
 
-
   result.audit=
     auditResult;
-
 
   engineCache.set(
     signature,
     result
   );
 
-
   return result;
 }
 
 
-async function runExactSearch(
-  args
-){
+async function runExactSearch(args){
 
   let result=
     await runRawSearch({
-
       ...args,
-
-      nodes:
-        PRIMARY_NODES
+      nodes:PRIMARY_NODES
     });
 
-
   if(result.exact){
-
     return result;
   }
-
 
   boundRetries++;
 
   updateStats();
 
-
   result=
     await runRawSearch({
-
       ...args,
-
-      nodes:
-        RETRY_NODES,
-
+      nodes:RETRY_NODES,
       audit:false
     });
-
 
   result.retriedForBound=
     true;
 
-
   return result;
+}
+
+
+/* ============================================================
+   MATE-DISTANCE LOSS
+   ============================================================ */
+
+function calculateMateDistanceLoss(
+  best,
+  played
+){
+
+  if(
+    best.scoreType!=="mate" ||
+    played.scoreType!=="mate"
+  ){
+    return null;
+  }
+
+  /*
+    The mate scores must have the same sign.
+
+    Positive means the root player can force mate.
+    Negative means the root player is being mated.
+  */
+
+  if(
+    Math.sign(best.scoreValue)!==
+    Math.sign(played.scoreValue)
+  ){
+    return null;
+  }
+
+  const bestDistance=
+    Math.abs(
+      best.scoreValue
+    );
+
+  const playedDistance=
+    Math.abs(
+      played.scoreValue
+    );
+
+  let lostMateMoves=0;
+
+  if(best.scoreValue>0){
+
+    /*
+      The player can force mate.
+
+      A larger played mate distance is worse because the
+      played move delays the forced win.
+
+      Best +M1 versus played +M4:
+        deterioration = 3 mate moves.
+    */
+
+    lostMateMoves=
+      Math.max(
+        0,
+        playedDistance-
+        bestDistance
+      );
+
+  }else{
+
+    /*
+      The player is already being mated.
+
+      A smaller played mate distance is worse because the
+      played move allows mate sooner.
+
+      Best -M4 versus played -M1:
+        deterioration = 3 mate moves.
+    */
+
+    lostMateMoves=
+      Math.max(
+        0,
+        bestDistance-
+        playedDistance
+      );
+  }
+
+  return{
+    bestDistance,
+    playedDistance,
+    lostMateMoves,
+
+    cpEquivalent:
+      lostMateMoves*
+      MATE_DISTANCE_CP_PER_MOVE
+  };
 }
 
 
@@ -1702,33 +1724,25 @@ function rootLoss(
       best.wdl
     );
 
-
   const playedExpected=
     expectedFromWdl(
       played.wdl
     );
 
-
   const wdlLoss=
-
     bestExpected===null ||
     playedExpected===null
-
       ?null
-
       :Math.max(
           0,
           bestExpected-
           playedExpected
         );
 
-
   let cpLoss=null;
-
   let mateState="none";
-
-  let badges=[];
-
+  let mateDistanceLoss=null;
+  const badges=[];
 
   if(
     best.scoreType==="cp" &&
@@ -1743,15 +1757,12 @@ function rootLoss(
       );
 
   }else if(
-
     best.scoreType==="mate" &&
     best.scoreValue>0 &&
-
     !(
       played.scoreType==="mate" &&
       played.scoreValue>0
     )
-
   ){
 
     mateState=
@@ -1762,47 +1773,90 @@ function rootLoss(
     );
 
   }else if(
-
     !(
       best.scoreType==="mate" &&
       best.scoreValue<0
     ) &&
-
     played.scoreType==="mate" &&
     played.scoreValue<0
-
   ){
 
     mateState=
       "allowedForcedMate";
 
-  }else if(
+    badges.push(
+      "Allowed mate"
+    );
 
+  }else if(
     best.scoreType==="mate" &&
     played.scoreType==="mate" &&
     best.scoreValue>0 &&
     played.scoreValue>0
-
   ){
 
     mateState=
       "bothForceMate";
 
+    mateDistanceLoss=
+      calculateMateDistanceLoss(
+        best,
+        played
+      );
+
+    cpLoss=
+      mateDistanceLoss
+        ?.cpEquivalent ??
+      null;
+
     badges.push(
-      "Forced mate"
+      "Forced mate retained"
     );
 
-  }else if(
+    if(
+      mateDistanceLoss &&
+      mateDistanceLoss.lostMateMoves>0
+    ){
 
+      badges.push(
+        `Mate delayed by ${mateDistanceLoss.lostMateMoves}`
+      );
+    }
+
+  }else if(
     best.scoreType==="mate" &&
     played.scoreType==="mate" &&
     best.scoreValue<0 &&
     played.scoreValue<0
-
   ){
 
     mateState=
       "bothLoseByMate";
+
+    mateDistanceLoss=
+      calculateMateDistanceLoss(
+        best,
+        played
+      );
+
+    cpLoss=
+      mateDistanceLoss
+        ?.cpEquivalent ??
+      null;
+
+    badges.push(
+      "Already lost"
+    );
+
+    if(
+      mateDistanceLoss &&
+      mateDistanceLoss.lostMateMoves>0
+    ){
+
+      badges.push(
+        `Mate sooner by ${mateDistanceLoss.lostMateMoves}`
+      );
+    }
 
   }else{
 
@@ -1810,14 +1864,13 @@ function rootLoss(
       "mixedScore";
   }
 
-
   return{
-
     cpLoss,
     wdlLoss,
     bestExpected,
     playedExpected,
     mateState,
+    mateDistanceLoss,
     badges
   };
 }
@@ -1838,20 +1891,14 @@ function winningPositionFactor(
       playedRootCp
     );
 
-
-  if(
-    retainedAdvantage<150
-  ){
+  if(retainedAdvantage<150){
     return 1.00;
   }
 
-
-  if(
-    retainedAdvantage<300
-  ){
+  if(retainedAdvantage<300){
 
     return(
-      1.00 -
+      1.00-
       (
         retainedAdvantage-150
       )/
@@ -1860,13 +1907,10 @@ function winningPositionFactor(
     );
   }
 
-
-  if(
-    retainedAdvantage<500
-  ){
+  if(retainedAdvantage<500){
 
     return(
-      0.90 -
+      0.90-
       (
         retainedAdvantage-300
       )/
@@ -1875,8 +1919,45 @@ function winningPositionFactor(
     );
   }
 
-
   return 0.60;
+}
+
+
+/* ============================================================
+   ORDINARY ACCURACY FROM CP LOSS
+   ============================================================ */
+
+function accuracyFromCpLoss(
+  cpLoss,
+  factor=1
+){
+
+  if(
+    typeof cpLoss!=="number" ||
+    !Number.isFinite(cpLoss)
+  ){
+    return null;
+  }
+
+  const effectivePawnLoss=
+    Math.max(
+      0,
+      cpLoss
+    )*
+    factor/
+    100;
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      100*
+      Math.exp(
+        -ACCURACY_DECAY*
+        effectivePawnLoss
+      )
+    )
+  );
 }
 
 
@@ -1885,30 +1966,25 @@ function winningPositionFactor(
    ============================================================ */
 
 function moveAccuracy({
-
   playedIsBest,
   loss,
   best,
   played
-
 }){
 
   /*
-    A genuinely best defensive move remains 100% accurate,
-    even when the player is already losing by forced mate.
+    Only an exact match with Stockfish's reported best move
+    receives an automatic 100%.
   */
 
   if(playedIsBest){
     return 100;
   }
 
-
-  if(
-    loss.mateState==="bothForceMate"
-  ){
-    return 100;
-  }
-
+  /*
+    Missing a forced mate or allowing a new forced mate is
+    treated as a complete tactical failure.
+  */
 
   if(
     loss.mateState==="missedForcedMate" ||
@@ -1917,74 +1993,73 @@ function moveAccuracy({
     return 0;
   }
 
-
-  if(
-    typeof loss.cpLoss==="number" &&
-    Number.isFinite(
-      loss.cpLoss
-    )
-  ){
-
-    let factor=1.00;
-
-
-    if(
-      best.scoreType==="cp" &&
-      played.scoreType==="cp"
-    ){
-
-      factor=
-        winningPositionFactor(
-          best.scoreValue,
-          played.scoreValue
-        );
-    }
-
-
-    const effectivePawnLoss=
-
-      Math.max(
-        0,
-        loss.cpLoss
-      )*
-
-      factor/
-
-      100;
-
-
-    return Math.max(
-
-      0,
-
-      Math.min(
-
-        100,
-
-        100*
-        Math.exp(
-          -ACCURACY_DECAY*
-          effectivePawnLoss
-        )
-      )
-    );
-  }
-
-
   /*
-    Both available lines lose by forced mate, but the
-    played move was not Stockfish's best defensive move.
-
-    It remains unscored until mate-loss calibration
-    is determined.
+    When both lines remain CP evaluations, retain the existing
+    ordinary formula and the winning-position factor.
   */
 
   if(
-    loss.mateState==="bothLoseByMate"
+    best.scoreType==="cp" &&
+    played.scoreType==="cp" &&
+    typeof loss.cpLoss==="number"
   ){
-    return null;
+
+    const factor=
+      winningPositionFactor(
+        best.scoreValue,
+        played.scoreValue
+      );
+
+    return accuracyFromCpLoss(
+      loss.cpLoss,
+      factor
+    );
   }
 
+  /*
+    When both lines remain mate evaluations for the same side,
+    use the mate-distance CP equivalent and feed it through the
+    same ordinary accuracy formula without a separate mate
+    multiplier or winning-position reduction.
+
+    This means:
+      - exact best move remains 100%;
+      - an equivalent non-best mate line can remain near 100%;
+      - delaying a forced win is penalised normally;
+      - allowing mate sooner from an already-mated position is
+        penalised normally;
+      - the move is not omitted from game accuracy.
+  */
+
+  if(
+    (
+      loss.mateState==="bothForceMate" ||
+      loss.mateState==="bothLoseByMate"
+    ) &&
+    typeof loss.cpLoss==="number"
+  ){
+
+    return accuracyFromCpLoss(
+      loss.cpLoss,
+      1
+    );
+  }
+
+  /*
+    Any remaining comparable CP-equivalent loss is processed
+    through the ordinary formula.
+  */
+
+  if(
+    typeof loss.cpLoss==="number" &&
+    Number.isFinite(loss.cpLoss)
+  ){
+
+    return accuracyFromCpLoss(
+      loss.cpLoss,
+      1
+    );
+  }
 
   return null;
 }
@@ -1995,18 +2070,28 @@ function moveAccuracy({
    ============================================================ */
 
 function classifyMove({
-
   playedIsBest,
   loss,
   best,
   played
-
 }){
 
   const badges=[
     ...loss.badges
   ];
 
+  /*
+    Best now has one strict meaning:
+    the played UCI move exactly matched Stockfish bestmove.
+  */
+
+  if(playedIsBest){
+
+    return{
+      quality:"Best",
+      badges
+    };
+  }
 
   if(
     loss.mateState==="missedForcedMate" ||
@@ -2019,61 +2104,17 @@ function classifyMove({
     };
   }
 
-
-  if(playedIsBest){
-
-    return{
-      quality:"Best",
-      badges
-    };
-  }
-
-
-  if(
-    loss.mateState==="bothForceMate"
-  ){
+  if(loss.cpLoss===null){
 
     return{
-      quality:"Best",
-      badges
-    };
-  }
-
-
-  if(
-    loss.mateState==="bothLoseByMate"
-  ){
-
-    return{
-
-      quality:
-        "Inaccuracy",
+      quality:"Inaccuracy",
 
       badges:[
         ...badges,
-        "Already lost",
-        "Mate-loss calibration pending"
+        "Uncalibrated score transition"
       ]
     };
   }
-
-
-  if(
-    loss.cpLoss===null
-  ){
-
-    return{
-
-      quality:
-        "Inaccuracy",
-
-      badges:[
-        ...badges,
-        "Mixed score types"
-      ]
-    };
-  }
-
 
   const cp=
     loss.cpLoss;
@@ -2081,21 +2122,12 @@ function classifyMove({
   const wdl=
     loss.wdlLoss;
 
+  /*
+    A non-best move can no longer be classified as Best.
 
-  if(
-    cp<=15 &&
-    (
-      wdl===null ||
-      wdl<=0.01
-    )
-  ){
-
-    return{
-      quality:"Best",
-      badges
-    };
-  }
-
+    A non-best move with negligible deterioration is instead
+    classified as Excellent.
+  */
 
   if(
     cp<=35 &&
@@ -2111,7 +2143,6 @@ function classifyMove({
     };
   }
 
-
   if(
     cp<=80 &&
     (
@@ -2126,7 +2157,6 @@ function classifyMove({
     };
   }
 
-
   if(cp<=175){
 
     return{
@@ -2135,7 +2165,6 @@ function classifyMove({
     };
   }
 
-
   if(cp<=350){
 
     return{
@@ -2143,7 +2172,6 @@ function classifyMove({
       badges
     };
   }
-
 
   return{
     quality:"Blunder",
@@ -2167,22 +2195,17 @@ function addCell(
       "td"
     );
 
-
   cell.textContent=
     value;
 
-
   if(className){
-
     cell.className=
       className;
   }
 
-
   parent.appendChild(
     cell
   );
-
 
   return cell;
 }
@@ -2193,16 +2216,12 @@ function addBadges(
   badges
 ){
 
-  for(
-    const badge
-    of badges
-  ){
+  for(const badge of badges){
 
     const span=
       document.createElement(
         "span"
       );
-
 
     span.className=
       "badge "+
@@ -2212,10 +2231,8 @@ function addBadges(
           :""
       );
 
-
     span.textContent=
       badge;
-
 
     cell.appendChild(
       span
@@ -2241,7 +2258,6 @@ function createGameView(
   box.className=
     "box";
 
-
   const title=
     document.createElement(
       "h2"
@@ -2254,12 +2270,10 @@ function createGameView(
     title
   );
 
-
   const link=
     document.createElement(
       "a"
     );
-
 
   link.href=
     "https://lichess.org/analysis/pgn/"+
@@ -2271,7 +2285,6 @@ function createGameView(
         .join("_")
     );
 
-
   link.target=
     "_blank";
 
@@ -2281,11 +2294,9 @@ function createGameView(
   link.textContent=
     "Open game in Lichess Analysis";
 
-
   box.appendChild(
     link
   );
-
 
   const note=
     document.createElement(
@@ -2296,13 +2307,11 @@ function createGameView(
     "small";
 
   note.textContent=
-    "Stockfish 19 diagnostic: unrestricted root versus forced played-move root, 100,000 nodes each, MultiPV 1, one thread, 128 MB hash.";
-
+    "Stockfish 19 diagnostic: unrestricted root versus forced played-move root, 100,000 nodes each, MultiPV 1, one thread, 128 MB hash. Best is reserved for an exact Stockfish bestmove match.";
 
   box.appendChild(
     note
   );
-
 
   const wrap=
     document.createElement(
@@ -2311,7 +2320,6 @@ function createGameView(
 
   wrap.className=
     "table-wrap";
-
 
   const table=
     document.createElement(
@@ -2328,29 +2336,25 @@ function createGameView(
       "tr"
     );
 
-
-  for(
-    const label
-    of[
-      "Ply",
-      "Move",
-      "Move accuracy",
-      "Quality",
-      "Badges",
-      "After eval",
-      "Best move",
-      "Best root",
-      "Played root",
-      "CP loss",
-      "WDL loss",
-      "Search confidence",
-      "FEN audit",
-      "Master games",
-      "Share",
-      "Opening",
-      "Diagnostics"
-    ]
-  ){
+  for(const label of[
+    "Ply",
+    "Move",
+    "Move accuracy",
+    "Quality",
+    "Badges",
+    "After eval",
+    "Best move",
+    "Best root",
+    "Played root",
+    "CP loss",
+    "WDL loss",
+    "Search confidence",
+    "FEN audit",
+    "Master games",
+    "Share",
+    "Opening",
+    "Diagnostics"
+  ]){
 
     const th=
       document.createElement(
@@ -2365,57 +2369,46 @@ function createGameView(
     );
   }
 
-
   head.appendChild(
     headerRow
   );
 
-
   table.appendChild(
     head
   );
-
 
   const tbody=
     document.createElement(
       "tbody"
     );
 
-
   table.appendChild(
     tbody
   );
-
 
   wrap.appendChild(
     table
   );
 
-
   box.appendChild(
     wrap
   );
-
 
   const summary=
     document.createElement(
       "div"
     );
 
-
   summary.className=
     "summary";
-
 
   box.appendChild(
     summary
   );
 
-
   resultsElement.appendChild(
     box
   );
-
 
   return{
     tbody,
@@ -2429,42 +2422,31 @@ function createGameView(
    SUMMARY
    ============================================================ */
 
-function updateSummary(
-  view
-){
+function updateSummary(view){
 
   const counts={
     w:{},
     b:{}
   };
 
-
   const accuracies={
     w:[],
     b:[]
   };
 
-
-  for(
-    const name
-    of QUALITY_CLASSES
-  ){
+  for(const name of QUALITY_CLASSES){
 
     counts.w[name]=0;
     counts.b[name]=0;
   }
 
-
-  for(
-    const row
-    of view.rows
-  ){
+  for(const row of view.rows){
 
     counts[row.color][row.quality]++;
 
-
     if(
-      typeof row.moveAccuracy==="number"
+      typeof row.moveAccuracy==="number" &&
+      Number.isFinite(row.moveAccuracy)
     ){
 
       accuracies[row.color]
@@ -2474,9 +2456,7 @@ function updateSummary(
     }
   }
 
-
   view.summary.replaceChildren();
-
 
   const item=
     (text,className="")=>{
@@ -2486,42 +2466,38 @@ function updateSummary(
           "div"
         );
 
-
       div.textContent=
         text;
 
-
       if(className){
-
         div.className=
           className;
       }
-
 
       view.summary.appendChild(
         div
       );
     };
 
+  /*
+    Retain the ordinary arithmetic game average in this build.
+
+    The individual move logic is being corrected first so the
+    effect can be tested independently before adopting any
+    nonlinear game-level aggregation.
+  */
 
   const average=
     color=>
-
       accuracies[color].length
-
         ?accuracies[color]
           .reduce(
-            (
-              total,
-              value
-            )=>
+            (total,value)=>
               total+value,
             0
           )/
           accuracies[color].length
-
         :null;
-
 
   item(
     "Metric",
@@ -2538,20 +2514,14 @@ function updateSummary(
     "summary-header"
   );
 
-
   item(
     "Accuracy"
   );
 
-
-  for(
-    const color
-    of["w","b"]
-  ){
+  for(const color of["w","b"]){
 
     const value=
       average(color);
-
 
     item(
       value===null
@@ -2560,11 +2530,7 @@ function updateSummary(
     );
   }
 
-
-  for(
-    const name
-    of QUALITY_CLASSES
-  ){
+  for(const name of QUALITY_CLASSES){
 
     item(
       name,
@@ -2595,34 +2561,27 @@ async function appendResult(
     row
   );
 
-
   const tr=
     document.createElement(
       "tr"
     );
-
 
   addCell(
     tr,
     row.ply
   );
 
-
   addCell(
     tr,
     `${row.san} (${row.uci})`
   );
 
-
   addCell(
-
     tr,
-
     row.moveAccuracy===null
       ?"-"
       :row.moveAccuracy.toFixed(1)+"%"
   );
-
 
   addCell(
     tr,
@@ -2630,114 +2589,85 @@ async function appendResult(
     row.quality
   );
 
-
   const badgeCell=
     addCell(
       tr,
       ""
     );
 
-
   addBadges(
     badgeCell,
     row.badges
   );
-
 
   addCell(
     tr,
     row.afterEval
   );
 
-
   addCell(
     tr,
     row.bestMove||"-"
   );
-
 
   addCell(
     tr,
     row.bestRoot
   );
 
-
   addCell(
     tr,
     row.playedRoot
   );
 
-
   addCell(
-
     tr,
-
     row.cpLoss===null
       ?"-"
       :(row.cpLoss/100).toFixed(2)
   );
 
-
   addCell(
-
     tr,
-
     row.wdlLoss===null
       ?"-"
       :row.wdlLoss.toFixed(3)
   );
 
-
   addCell(
-
     tr,
-
     row.confidence,
-
     row.confidence==="Exact"
       ?""
       :"confidence-low"
   );
 
-
   addCell(
-
     tr,
-
     row.audit
       ?"PASS"
       :"FAIL",
-
     row.audit
       ?"audit-ok"
       :"audit-bad"
   );
 
-
   addCell(
-
     tr,
-
     row.masterGames===null
       ?"-"
       :row.masterGames.toLocaleString()
   );
 
-
   addCell(
-
     tr,
-
     row.share===null
       ?"-"
       :row.share.toFixed(2)+"%"
   );
 
-
   addCell(
-
     tr,
-
     row.opening
       ?(
           row.opening.eco+
@@ -2747,63 +2677,51 @@ async function appendResult(
       :"-"
   );
 
-
   const diagnosticCell=
     addCell(
       tr,
       ""
     );
 
-
   const details=
     document.createElement(
       "details"
     );
-
 
   const detailsSummary=
     document.createElement(
       "summary"
     );
 
-
   const pre=
     document.createElement(
       "pre"
     );
 
-
   detailsSummary.textContent=
     "Engine details";
 
-
   pre.textContent=
     row.diagnostic;
-
 
   details.append(
     detailsSummary,
     pre
   );
 
-
   diagnosticCell.append(
     details
   );
-
 
   view.tbody.appendChild(
     tr
   );
 
-
   updateSummary(
     view
   );
 
-
   updateStats();
-
 
   await new Promise(
     resolve=>
@@ -2827,7 +2745,6 @@ async function analyseGame(
   const parsed=
     new Chess();
 
-
   parsed.loadPgn(
     pgn,
     {
@@ -2835,12 +2752,10 @@ async function analyseGame(
     }
   );
 
-
   const history=
     parsed.history({
       verbose:true
     });
-
 
   if(!history.length){
 
@@ -2849,22 +2764,17 @@ async function analyseGame(
     );
   }
 
-
   await startNewGame();
-
 
   const rootFen=
     history[0].before;
-
 
   const replay=
     new Chess(
       rootFen
     );
 
-
   const moves=[];
-
 
   const view=
     createGameView(
@@ -2872,11 +2782,8 @@ async function analyseGame(
       history
     );
 
-
   let stillInBook=true;
-
   let latestOpening=null;
-
 
   for(
     let index=0;
@@ -2886,24 +2793,19 @@ async function analyseGame(
 
     checkStopped();
 
-
     const original=
       history[index];
-
 
     const preFen=
       replay.fen();
 
-
     const whiteToMove=
       replay.turn()==="w";
-
 
     const played=
       replay.move(
         original.san
       );
-
 
     if(!played){
 
@@ -2912,38 +2814,29 @@ async function analyseGame(
       );
     }
 
-
     const playedUci=
       moveToUci(
         played
       );
-
 
     const afterMoves=
       moves.concat(
         playedUci
       );
 
-
     const afterFen=
       replay.fen();
 
-
     const checkmate=
       replay.isCheckmate();
-
 
     const drawn=
       !checkmate &&
       replay.isDraw();
 
-
     let isBook=false;
-
     let masterGames=null;
-
     let share=null;
-
 
     if(
       stillInBook &&
@@ -2953,13 +2846,11 @@ async function analyseGame(
       statusElement.textContent=
         `Game ${number}: checking opening ${played.san}...`;
 
-
       const beforeData=
         await getMasterPosition(
           rootFen,
           moves
         );
-
 
       const entry=
         (
@@ -2972,7 +2863,6 @@ async function analyseGame(
             playedUci
         );
 
-
       if(entry){
 
         const afterData=
@@ -2981,36 +2871,29 @@ async function analyseGame(
             afterMoves
           );
 
-
         const opening=
           normaliseOpening(
             afterData.opening
           );
 
-
         if(opening){
-
           latestOpening=
             opening;
         }
 
-
         if(opening){
 
           isBook=true;
-
 
           masterGames=
             gameCount(
               entry
             );
 
-
           const total=
             gameCount(
               beforeData
             );
-
 
           share=
             total
@@ -3030,48 +2913,34 @@ async function analyseGame(
       }
     }
 
-
     statusElement.textContent=
       `Game ${number}: analysing ${played.san} `+
       `(${index+1}/${history.length})...`;
 
-
     const best=
       await runExactSearch({
-
         rootFen,
         moves,
-
-        expectedFen:
-          preFen
+        expectedFen:preFen
       });
 
-
     const playedIsBest=
-      best.bestMove===
+      String(best.bestMove||"")
+        .toLowerCase()===
       playedUci;
-
 
     const forced=
       playedIsBest
-
         ?best
-
         :await runExactSearch({
-
             rootFen,
             moves,
-
-            expectedFen:
-              preFen,
-
+            expectedFen:preFen,
             searchMoves:[
               playedUci
             ],
-
             audit:false
           });
-
 
     const loss=
       rootLoss(
@@ -3079,35 +2948,24 @@ async function analyseGame(
         forced
       );
 
-
     const classification=
       classifyMove({
-
         playedIsBest,
         loss,
         best,
-
-        played:
-          forced
+        played:forced
       });
-
 
     const accuracy=
       moveAccuracy({
-
         playedIsBest,
         loss,
         best,
-
-        played:
-          forced
+        played:forced
       });
 
-
     let afterResult=null;
-
     let afterEval;
-
 
     if(checkmate){
 
@@ -3125,16 +2983,10 @@ async function analyseGame(
 
       afterResult=
         await runExactSearch({
-
           rootFen,
-
-          moves:
-            afterMoves,
-
-          expectedFen:
-            afterFen
+          moves:afterMoves,
+          expectedFen:afterFen
         });
-
 
       afterEval=
         formatWhiteDisplay(
@@ -3143,59 +2995,75 @@ async function analyseGame(
         );
     }
 
-
     const badges=[
-
       ...(
         isBook
           ?["Book"]
           :[]
       ),
-
       ...classification.badges
     ];
 
-
     const exact=
-
       best.exact &&
-
       forced.exact &&
-
       (
         afterResult?.exact ??
         true
       );
 
-
     const auditOk=
       Boolean(
-
         best.audit?.ok &&
-
         (
           afterResult?.audit?.ok ??
           true
         )
       );
 
+    const mateDistanceDiagnostic=
+      loss.mateDistanceLoss
+        ?[
+            `Best mate distance: ${loss.mateDistanceLoss.bestDistance}`,
+            `Played mate distance: ${loss.mateDistanceLoss.playedDistance}`,
+            `Mate moves lost: ${loss.mateDistanceLoss.lostMateMoves}`,
+            `Mate CP equivalent: ${loss.mateDistanceLoss.cpEquivalent}`
+          ].join("\n")
+        :"Mate-distance conversion: n/a";
+
+    const accuracyMethod=
+      playedIsBest
+        ?"exact Stockfish bestmove match"
+        :(
+            loss.mateDistanceLoss
+              ?"ordinary accuracy using mate-distance CP equivalent"
+              :(
+                  best.scoreType==="cp" &&
+                  forced.scoreType==="cp"
+                    ?"ordinary accuracy using effective CP loss"
+                    :"special tactical transition"
+                )
+          );
 
     const diagnostic=[
-
       `Pre-move position: ${best.command}`,
 
       `Pre-move FEN: ${best.audit?.actual||preFen}`,
+
+      `Played move: ${playedUci}`,
+
+      `Stockfish best move: ${best.bestMove||"n/a"}`,
+
+      `Exact best-move match: ${playedIsBest?"yes":"no"}`,
 
       `Best search: ${best.goCommand}\n${best.raw}`,
 
       `Played search: ${forced.goCommand}\n${forced.raw}`,
 
       afterResult
-
         ?`After-position display search: ${afterResult.goCommand}\n`+
          `After FEN: ${afterResult.audit?.actual||afterFen}\n`+
          `${afterResult.raw}`
-
         :`After position: ${
             checkmate
               ?"checkmate"
@@ -3214,23 +3082,33 @@ async function analyseGame(
         loss.mateState
       }`,
 
+      mateDistanceDiagnostic,
+
       `Winning-position factor: ${
         best.scoreType==="cp" &&
         forced.scoreType==="cp"
-
           ?winningPositionFactor(
               best.scoreValue,
               forced.scoreValue
             ).toFixed(3)
-
           :"n/a"
       }`,
 
       `Move accuracy: ${
         accuracy===null
-          ?"unscored pending mate-loss calibration"
-          :accuracy.toFixed(3)+"% using effective CP loss"
+          ?"unscored"
+          :accuracy.toFixed(3)+"%"
       }`,
+
+      `Accuracy method: ${accuracyMethod}`,
+
+      `Final display quality: ${
+        isBook
+          ?"Book"
+          :classification.quality
+      }`,
+
+      `Underlying engine quality: ${classification.quality}`,
 
       `NNUE: ${
         engineMetadata.nnueMessages.at(-1) ||
@@ -3240,27 +3118,17 @@ async function analyseGame(
       `Critical errors: ${
         engineMetadata.criticalErrors.length
       }`
-
     ].join(
       "\n\n"
     );
 
-
     await appendResult(
       view,
       {
-
-        ply:
-          index+1,
-
-        color:
-          played.color,
-
-        san:
-          played.san,
-
-        uci:
-          playedUci,
+        ply:index+1,
+        color:played.color,
+        san:played.san,
+        uci:playedUci,
 
         quality:
           isBook
@@ -3271,7 +3139,6 @@ async function analyseGame(
           accuracy,
 
         badges,
-
         afterEval,
 
         bestMove:
@@ -3302,7 +3169,6 @@ async function analyseGame(
           auditOk,
 
         masterGames,
-
         share,
 
         opening:
@@ -3311,7 +3177,6 @@ async function analyseGame(
         diagnostic
       }
     );
-
 
     moves.push(
       playedUci
@@ -3332,12 +3197,10 @@ analyseButton.addEventListener(
       return;
     }
 
-
     const pgns=
       splitPGNs(
         pgnInput.value
       );
-
 
     if(!pgns.length){
 
@@ -3347,10 +3210,8 @@ analyseButton.addEventListener(
       return;
     }
 
-
     stopped=false;
     running=true;
-
 
     openingRequests=0;
     openingCacheHits=0;
@@ -3363,11 +3224,8 @@ analyseButton.addEventListener(
 
     boundRetries=0;
 
-
     engineMetadata.criticalErrors=[];
-
     engineMetadata.nnueMessages=[];
-
 
     analyseButton.disabled=
       true;
@@ -3375,24 +3233,17 @@ analyseButton.addEventListener(
     stopButton.disabled=
       false;
 
-
     resultsElement.replaceChildren();
 
-
     updateStats();
-
 
     try{
 
       statusElement.textContent=
         "Checking Kastled login...";
 
-
       await getSession();
-
-
       await loadChessParser();
-
 
       for(
         let index=0;
@@ -3402,20 +3253,15 @@ analyseButton.addEventListener(
 
         checkStopped();
 
-
         await analyseGame(
           pgns[index],
           index+1
         );
       }
 
-
       statusElement.textContent=
-
         `Analysis complete. FEN audits: `+
-
         `${fenAudits-fenFailures}/${fenAudits} passed.`;
-
 
     }catch(error){
 
@@ -3423,15 +3269,11 @@ analyseButton.addEventListener(
         error
       );
 
-
       statusElement.textContent=
         stopped
-
           ?"Stopped. Completed results remain visible."
-
           :"Error: "+
            error.message;
-
 
     }finally{
 
@@ -3442,7 +3284,6 @@ analyseButton.addEventListener(
 
       stopButton.disabled=
         true;
-
 
       updateStats();
     }
@@ -3460,25 +3301,19 @@ stopButton.addEventListener(
 
     stopped=true;
 
-
     if(activeController){
-
       activeController.abort();
     }
 
-
     if(worker){
-
       worker.postMessage(
         "stop"
       );
     }
 
-
     resetEngine(
       "Stopped."
     );
-
 
     statusElement.textContent=
       "Stopping. Completed results remain visible.";
