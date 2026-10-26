@@ -3,73 +3,304 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chess Move Classification Tester v1.12.3.0</title>
+
+<title>Chess Move Classification Tester v1.14.0</title>
 
 <style>
-body{font-family:Arial,sans-serif;max-width:1800px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}
-.box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
-textarea{width:100%;box-sizing:border-box;min-height:220px;padding:12px;margin:8px 0 15px;font-family:monospace;resize:vertical}
-button{padding:11px 18px;margin:12px 7px 0 0;font-size:15px;cursor:pointer}
-button:disabled{opacity:.5;cursor:not-allowed}
-.table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;margin-top:15px;font-size:12px}
-th,td{border-bottom:1px solid #ddd;padding:7px;text-align:left;vertical-align:top}
-th{background:#eee;position:sticky;top:0;z-index:1}
-.Book{color:#92400e;font-weight:bold}
-.Brilliant{color:#0d9488;font-weight:bold}
-.Great{color:#2563eb;font-weight:bold}
-.Best{color:#10b981;font-weight:bold}
-.Excellent{color:#65a30d;font-weight:bold}
-.Good{color:#475569;font-weight:bold}
-.Inaccuracy{color:#a17a00;font-weight:bold}
-.Mistake{color:#f97316;font-weight:bold}
-.Blunder{color:#dc2626;font-weight:bold}
-.badge{display:inline-block;padding:2px 6px;margin:1px 3px 1px 0;border-radius:999px;background:#eee;font-size:11px}
-.badge-book{background:#fef3c7;color:#92400e}
-.badge-warning{background:#fee2e2;color:#991b1b}
-.notice{background:#eef5ff;padding:12px;border-radius:7px}
-.warning{background:#fff4e5;padding:12px;border-radius:7px}
-.status{margin-top:12px;font-weight:bold}
-.stats,.small{color:#555;margin-top:8px}
-.summary{display:grid;grid-template-columns:220px 1fr 1fr;max-width:650px;gap:7px;margin-top:15px}
-.summary>div{padding:5px;border-bottom:1px solid #eee}
-.summary-header{font-weight:bold;background:#eee}
-.audit-ok{color:#15803d;font-weight:bold}
-.audit-bad{color:#b91c1c;font-weight:bold}
-.confidence-low{color:#b91c1c;font-weight:bold}
-details{max-width:760px}
-pre{white-space:pre-wrap;overflow-wrap:anywhere}
-a{color:#1565c0}
+body{
+  font-family:Arial,sans-serif;
+  max-width:1900px;
+  margin:30px auto;
+  padding:0 18px;
+  background:#f5f5f5;
+  color:#222
+}
+
+.box{
+  background:#fff;
+  padding:20px;
+  border-radius:10px;
+  margin-bottom:20px
+}
+
+textarea{
+  width:100%;
+  box-sizing:border-box;
+  min-height:220px;
+  padding:12px;
+  margin:8px 0 15px;
+  font-family:monospace;
+  resize:vertical
+}
+
+button{
+  padding:11px 18px;
+  margin:12px 7px 0 0;
+  font-size:15px;
+  cursor:pointer
+}
+
+button:disabled{
+  opacity:.5;
+  cursor:not-allowed
+}
+
+.table-wrap{
+  overflow-x:auto
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:15px;
+  font-size:11px
+}
+
+th,td{
+  border-bottom:1px solid #ddd;
+  padding:6px;
+  text-align:left;
+  vertical-align:top
+}
+
+th{
+  background:#eee;
+  position:sticky;
+  top:0;
+  z-index:1;
+  white-space:nowrap
+}
+
+.Book{
+  color:#92400e;
+  font-weight:bold
+}
+
+.Brilliant{
+  color:#0d9488;
+  font-weight:bold
+}
+
+.Great{
+  color:#2563eb;
+  font-weight:bold
+}
+
+.Best{
+  color:#10b981;
+  font-weight:bold
+}
+
+.Excellent{
+  color:#65a30d;
+  font-weight:bold
+}
+
+.Good{
+  color:#475569;
+  font-weight:bold
+}
+
+.Inaccuracy{
+  color:#a17a00;
+  font-weight:bold
+}
+
+.Mistake{
+  color:#f97316;
+  font-weight:bold
+}
+
+.Blunder{
+  color:#dc2626;
+  font-weight:bold
+}
+
+.Forced{
+  color:#7c3aed;
+  font-weight:bold
+}
+
+.badge{
+  display:inline-block;
+  padding:2px 6px;
+  margin:1px 3px 1px 0;
+  border-radius:999px;
+  background:#eee;
+  font-size:11px
+}
+
+.badge-book{
+  background:#fef3c7;
+  color:#92400e
+}
+
+.notice{
+  background:#eef5ff;
+  padding:12px;
+  border-radius:7px
+}
+
+.warning{
+  background:#fff4e5;
+  padding:12px;
+  border-radius:7px
+}
+
+.status{
+  margin-top:12px;
+  font-weight:bold
+}
+
+.stats,.small{
+  color:#555;
+  margin-top:8px
+}
+
+.summary{
+  display:grid;
+  grid-template-columns:245px 1fr 1fr;
+  max-width:760px;
+  gap:7px;
+  margin-top:15px
+}
+
+.summary>div{
+  padding:5px;
+  border-bottom:1px solid #eee
+}
+
+.summary-header{
+  font-weight:bold;
+  background:#eee
+}
+
+.audit-ok{
+  color:#15803d;
+  font-weight:bold
+}
+
+.audit-bad{
+  color:#b91c1c;
+  font-weight:bold
+}
+
+.confidence-low{
+  color:#b91c1c;
+  font-weight:bold
+}
+
+details{
+  max-width:840px
+}
+
+pre{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere
+}
+
+a{
+  color:#1565c0
+}
+
+.model-lichess{
+  background:#eef5ff
+}
+
+.model-candidate{
+  background:#ecfdf5
+}
+
+.target-grid{
+  display:grid;
+  grid-template-columns:170px 120px 120px;
+  gap:8px;
+  align-items:center;
+  margin-top:12px
+}
+
+.target-grid input{
+  padding:7px;
+  width:100px
+}
 </style>
 </head>
 
 <body>
 
-<h1>Chess Move Classification Tester v1.12.3.0</h1>
+<h1>Chess Move Classification Tester v1.14.0</h1>
 
 <div class="box">
 
 <p>
-Diagnostic build comparing Stockfish's best move and the played move from the same pre-move position.
+<strong>Diagnostic dual-model build.</strong>
+Stockfish analysis is run once. The page then shows the published
+Lichess model and a provisional Chess.com-calibration candidate
+side by side.
 </p>
 
 <p class="notice">
-Move and game accuracy now follow the supplied Lichess AccuracyPercent.scala structure. Sequential position evaluations are converted to Win%, move accuracy is calculated from the reduction in the mover's Win%, and game accuracy is the mean of the volatility-weighted mean and harmonic mean.
+Lichess model: sequential position Win%, uncertainty bonus,
+volatility-weighted mean and harmonic mean. Candidate model:
+root WDL expected-points loss, a small bounded mate-distance
+adjustment, and a game blend of 35% arithmetic mean,
+45% harmonic mean and 20% capped critical-position mean.
 </p>
 
 <p class="warning">
-Best is reserved for an exact match with Stockfish's reported best move. Book moves remain labelled Book but still receive calculated move accuracy. Mate scores are converted to plus or minus 1,000 centipawns for the Lichess game-accuracy calculation. Mate distance is therefore not separately penalised once forced mate exists.
+The candidate constants are deliberately exposed for testing.
+Great, Brilliant and Miss are not fabricated in this build.
+Book and Forced are contextual labels. Best requires an exact
+Stockfish bestmove match.
 </p>
 
-<label for="pgnInput"><strong>PGNs</strong></label>
+<label for="pgnInput">
+<strong>PGNs</strong>
+</label>
 
 <textarea
   id="pgnInput"
   placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'
 ></textarea>
 
-<button id="analyseButton" type="button">Analyse PGNs</button>
-<button id="stopButton" type="button" disabled>Stop</button>
+<div class="target-grid">
+
+<div>
+<strong>Optional target</strong>
+</div>
+
+<div>White</div>
+<div>Black</div>
+
+<div>Chess.com accuracy</div>
+
+<input
+  id="targetWhite"
+  type="number"
+  min="0"
+  max="100"
+  step="0.1"
+  placeholder="e.g. 89.9"
+>
+
+<input
+  id="targetBlack"
+  type="number"
+  min="0"
+  max="100"
+  step="0.1"
+  placeholder="e.g. 65.5"
+>
+
+</div>
+
+<button id="analyseButton" type="button">
+Analyse PGNs
+</button>
+
+<button id="stopButton" type="button" disabled>
+Stop
+</button>
 
 <div id="status" class="status" role="status">
 Starting JavaScript...
@@ -86,7 +317,17 @@ Starting JavaScript...
 <script>
 "use strict";
 
-const VERSION="1.12.3.0";
+
+/* ============================================================
+   VERSION
+   ============================================================ */
+
+const VERSION="1.14.0";
+
+
+/* ============================================================
+   SUPABASE
+   ============================================================ */
 
 const SUPABASE_URL=
   "https://sgpafvuexdmnbdbvveny.supabase.co";
@@ -94,19 +335,36 @@ const SUPABASE_URL=
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_blGh-rrLxaxf5K14TEAzVw_NuXYM1d5";
 
-const FUNCTION_NAME="lichess-opening";
+const FUNCTION_NAME=
+  "lichess-opening";
+
+
+/* ============================================================
+   STOCKFISH
+   ============================================================ */
 
 const PRIMARY_NODES=100000;
 const RETRY_NODES=200000;
 const MULTIPV=1;
 const HASH_MB=128;
 
-const STOCKFISH_URL="./Assets/stockfish-19-single.js";
+const STOCKFISH_URL=
+  "./Assets/stockfish-19-single.js";
+
+
+/* ============================================================
+   CHESS.JS
+   ============================================================ */
 
 const PARSER_SOURCES=[
   "https://esm.sh/chess.js@1.4.0",
   "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js"
 ];
+
+
+/* ============================================================
+   PUBLISHED LICHESS CONSTANTS
+   ============================================================ */
 
 const LICHESS_INITIAL_CP=15;
 const LICHESS_MATE_CP=1000;
@@ -114,17 +372,75 @@ const LICHESS_MATE_CP=1000;
 const LICHESS_WIN_SLOPE=
   0.00368208;
 
-const LICHESS_ACCURACY_A=
+const LICHESS_A=
   103.1668100711649;
 
-const LICHESS_ACCURACY_K=
+const LICHESS_K=
   0.04354415386753951;
 
-const LICHESS_ACCURACY_B=
+const LICHESS_B=
   -3.166924740191411;
 
 const LICHESS_UNCERTAINTY_BONUS=
   1;
+
+
+/* ============================================================
+   PROVISIONAL CHESS.COM CANDIDATE CONSTANTS
+   ============================================================ */
+
+/*
+  Candidate game accuracy:
+
+    35% arithmetic mean
+    45% harmonic mean
+    20% capped critical-position mean
+
+  These are diagnostic starting values.
+
+  They are intentionally declared here so that they can be
+  changed later without changing the rest of the calculation.
+*/
+
+const CANDIDATE_ARITHMETIC_SHARE=
+  0.35;
+
+const CANDIDATE_HARMONIC_SHARE=
+  0.45;
+
+const CANDIDATE_CRITICAL_SHARE=
+  0.20;
+
+
+/*
+  Lichess volatility weights can reach 12.
+
+  The candidate model compresses this to a much narrower
+  critical-position range of 1 to 3.
+*/
+
+const CANDIDATE_CRITICAL_MAX_WEIGHT=
+  3;
+
+
+/*
+  Maximum expected-points adjustment arising solely from
+  proportional mate-distance deterioration.
+
+  A full normalized mate-distance deterioration contributes
+  at most 0.08 expected points.
+
+  This is deliberately bounded so that mate distance informs
+  the result without overwhelming the expected-outcome model.
+*/
+
+const CANDIDATE_MATE_EP_SCALE=
+  0.08;
+
+
+/* ============================================================
+   QUALITY CLASSES
+   ============================================================ */
 
 const QUALITY_CLASSES=[
   "Book",
@@ -135,32 +451,53 @@ const QUALITY_CLASSES=[
   "Good",
   "Inaccuracy",
   "Mistake",
-  "Blunder"
+  "Blunder",
+  "Forced"
 ];
 
+
+/* ============================================================
+   PAGE ELEMENTS
+   ============================================================ */
+
+const $=
+  id=>
+    document.getElementById(id);
+
 const analyseButton=
-  document.getElementById("analyseButton");
+  $("analyseButton");
 
 const stopButton=
-  document.getElementById("stopButton");
+  $("stopButton");
 
 const pgnInput=
-  document.getElementById("pgnInput");
+  $("pgnInput");
 
 const statusElement=
-  document.getElementById("status");
+  $("status");
 
 const statsElement=
-  document.getElementById("stats");
+  $("stats");
 
 const engineElement=
-  document.getElementById("engineName");
+  $("engineName");
 
 const optionsElement=
-  document.getElementById("engineOptions");
+  $("engineOptions");
 
 const resultsElement=
-  document.getElementById("results");
+  $("results");
+
+const targetWhite=
+  $("targetWhite");
+
+const targetBlack=
+  $("targetBlack");
+
+
+/* ============================================================
+   GLOBAL STATE
+   ============================================================ */
 
 let Chess=null;
 let supabaseClient=null;
@@ -171,20 +508,29 @@ let activeController=null;
 
 let openingRequests=0;
 let openingCacheHits=0;
+
 let engineSearches=0;
 let engineCacheHits=0;
+
 let fenAudits=0;
 let fenFailures=0;
+
 let boundRetries=0;
 
-const explorerCache=new Map();
-const engineCache=new Map();
+const explorerCache=
+  new Map();
+
+const engineCache=
+  new Map();
 
 let worker=null;
 let engineInitialisation=null;
+
 let readyWaiter=null;
 let currentSearch=null;
 let fenWaiter=null;
+
+const gameViews=[];
 
 const engineMetadata={
   name:"",
@@ -195,22 +541,47 @@ const engineMetadata={
   criticalErrors:[]
 };
 
+
+/* ============================================================
+   INITIAL STATUS
+   ============================================================ */
+
 statusElement.textContent=
   "Ready. Analyse button connected.";
 
-window.addEventListener("error",event=>{
 
-  statusElement.textContent=
-    `JavaScript error: ${event.message} at line ${event.lineno}`;
-});
+/* ============================================================
+   GLOBAL ERROR REPORTING
+   ============================================================ */
 
-window.addEventListener("unhandledrejection",event=>{
+window.addEventListener(
+  "error",
+  event=>{
 
-  statusElement.textContent=
-    `Error: ${event.reason?.message||String(event.reason)}`;
-});
+    statusElement.textContent=
+      `JavaScript error: ${event.message} at line ${event.lineno}`;
+  }
+);
 
-function clamp(value,minimum,maximum){
+window.addEventListener(
+  "unhandledrejection",
+  event=>{
+
+    statusElement.textContent=
+      `Error: ${event.reason?.message||String(event.reason)}`;
+  }
+);
+
+
+/* ============================================================
+   GENERAL HELPERS
+   ============================================================ */
+
+function clamp(
+  value,
+  minimum,
+  maximum
+){
 
   return Math.max(
     minimum,
@@ -220,6 +591,7 @@ function clamp(value,minimum,maximum){
     )
   );
 }
+
 
 function updateStats(){
 
@@ -232,6 +604,7 @@ function updateStats(){
     `FEN audits: ${fenAudits} | `+
     `FEN failures: ${fenFailures}`;
 }
+
 
 function updateEngineMetadata(){
 
@@ -260,6 +633,7 @@ function updateEngineMetadata(){
   "NNUE option details not yet reported.";
 }
 
+
 function checkStopped(){
 
   if(stopped){
@@ -267,25 +641,35 @@ function checkStopped(){
   }
 }
 
-function withTimeout(promise,ms,message){
+
+function withTimeout(
+  promise,
+  milliseconds,
+  message
+){
 
   let timer;
 
   return Promise.race([
     promise,
 
-    new Promise((_,reject)=>{
+    new Promise(
+      (_,reject)=>{
 
-      timer=setTimeout(
-        ()=>reject(new Error(message)),
-        ms
-      );
-    })
-  ]).finally(()=>{
-
-    clearTimeout(timer);
-  });
+        timer=setTimeout(
+          ()=>reject(
+            new Error(message)
+          ),
+          milliseconds
+        );
+      }
+    )
+  ])
+  .finally(
+    ()=>clearTimeout(timer)
+  );
 }
+
 
 function normalizeFen(fen){
 
@@ -293,6 +677,7 @@ function normalizeFen(fen){
     .trim()
     .replace(/\s+/g," ");
 }
+
 
 function splitPGNs(text){
 
@@ -304,7 +689,9 @@ function splitPGNs(text){
 
   const matches=
     Array.from(
-      text.matchAll(/^\[Event\s/gm)
+      text.matchAll(
+        /^\[Event\s/gm
+      )
     );
 
   if(matches.length<=1){
@@ -312,14 +699,17 @@ function splitPGNs(text){
   }
 
   return matches
-    .map((match,index)=>
-      text.slice(
-        match.index,
-        matches[index+1]?.index ?? text.length
-      ).trim()
+    .map(
+      (match,index)=>
+        text.slice(
+          match.index,
+          matches[index+1]?.index ??
+          text.length
+        ).trim()
     )
     .filter(Boolean);
 }
+
 
 function moveToUci(move){
 
@@ -330,11 +720,15 @@ function moveToUci(move){
   ).toLowerCase();
 }
 
+
 function normaliseOpening(opening){
 
   if(
     !opening ||
-    (!opening.eco&&!opening.name)
+    (
+      !opening.eco &&
+      !opening.name
+    )
   ){
     return null;
   }
@@ -345,6 +739,7 @@ function normaliseOpening(opening){
   };
 }
 
+
 function gameCount(data){
 
   return(
@@ -354,12 +749,18 @@ function gameCount(data){
   );
 }
 
+
 function expectedFromWdl(wdl){
 
   return wdl
-    ?(wdl.w+0.5*wdl.d)/1000
+    ?(
+        wdl.w+
+        0.5*wdl.d
+      )/
+      1000
     :null;
 }
+
 
 function formatCp(cp){
 
@@ -370,14 +771,17 @@ function formatCp(cp){
     return"-";
   }
 
-  const value=cp/100;
+  const value=
+    cp/100;
 
   return(
     value>0
       ?"+"
       :""
-  )+value.toFixed(2);
+  )+
+  value.toFixed(2);
 }
+
 
 function formatRootScore(result){
 
@@ -385,20 +789,25 @@ function formatRootScore(result){
     return"-";
   }
 
-  if(result.scoreType==="mate"){
+  if(
+    result.scoreType==="mate"
+  ){
 
     return(
       result.scoreValue>0
         ?"+M"
         :"-M"
     )+
-    Math.abs(result.scoreValue);
+    Math.abs(
+      result.scoreValue
+    );
   }
 
   return formatCp(
     result.scoreValue
   );
 }
+
 
 function formatWhiteDisplay(
   result,
@@ -414,10 +823,13 @@ function formatWhiteDisplay(
       ?1
       :-1;
 
-  if(result.scoreType==="mate"){
+  if(
+    result.scoreType==="mate"
+  ){
 
     const mate=
-      result.scoreValue*sign;
+      result.scoreValue*
+      sign;
 
     return(
       mate>0
@@ -428,11 +840,16 @@ function formatWhiteDisplay(
   }
 
   return formatCp(
-    result.scoreValue*sign
+    result.scoreValue*
+    sign
   );
 }
 
-function parseOption(line,name){
+
+function parseOption(
+  line,
+  name
+){
 
   const escaped=
     name.replace(
@@ -447,8 +864,9 @@ function parseOption(line,name){
   )?.[1]?.trim()||"";
 }
 
+
 /* ============================================================
-   LICHESS ACCURACY
+   LICHESS MOVE ACCURACY
    ============================================================ */
 
 function lichessWinPercentFromCp(cp){
@@ -460,7 +878,8 @@ function lichessWinPercentFromCp(cp){
       LICHESS_MATE_CP
     );
 
-  return 50+
+  return(
+    50+
     50*
     (
       2/
@@ -472,8 +891,10 @@ function lichessWinPercentFromCp(cp){
         )
       )
       -1
-    );
+    )
+  );
 }
+
 
 function lichessAccuracyFromWinPercents(
   before,
@@ -484,16 +905,16 @@ function lichessAccuracyFromWinPercents(
     return 100;
   }
 
-  const winDiff=
+  const winDifference=
     before-after;
 
   const raw=
-    LICHESS_ACCURACY_A*
+    LICHESS_A*
     Math.exp(
-      -LICHESS_ACCURACY_K*
-      winDiff
+      -LICHESS_K*
+      winDifference
     )+
-    LICHESS_ACCURACY_B;
+    LICHESS_B;
 
   return clamp(
     raw+
@@ -502,6 +923,7 @@ function lichessAccuracyFromWinPercents(
     100
   );
 }
+
 
 function resultToWhiteCp(
   result,
@@ -517,19 +939,30 @@ function resultToWhiteCp(
       ?1
       :-1;
 
-  if(result.scoreType==="mate"){
+  if(
+    result.scoreType==="mate"
+  ){
 
-    return result.scoreValue>0
-      ?LICHESS_MATE_CP*sign
-      :-LICHESS_MATE_CP*sign;
+    return(
+      result.scoreValue>0
+        ?LICHESS_MATE_CP
+        :-LICHESS_MATE_CP
+    )*
+    sign;
   }
 
   return clamp(
-    result.scoreValue*sign,
+    result.scoreValue*
+    sign,
     -LICHESS_MATE_CP,
     LICHESS_MATE_CP
   );
 }
+
+
+/* ============================================================
+   MEAN CALCULATIONS
+   ============================================================ */
 
 function standardDeviation(values){
 
@@ -562,20 +995,22 @@ function standardDeviation(values){
   );
 }
 
+
 function weightedMean(entries){
 
   if(!entries.length){
     return null;
   }
 
-  const weightTotal=
+  const totalWeight=
     entries.reduce(
       (total,entry)=>
-        total+entry.weight,
+        total+
+        entry.weight,
       0
     );
 
-  if(!weightTotal){
+  if(!totalWeight){
     return null;
   }
 
@@ -586,8 +1021,24 @@ function weightedMean(entries){
       entry.weight,
     0
   )/
-  weightTotal;
+  totalWeight;
 }
+
+
+function arithmeticMean(values){
+
+  if(!values.length){
+    return null;
+  }
+
+  return values.reduce(
+    (total,value)=>
+      total+value,
+    0
+  )/
+  values.length;
+}
+
 
 function harmonicMean(values){
 
@@ -603,16 +1054,217 @@ function harmonicMean(values){
     return 0;
   }
 
-  return values.length/
+  return(
+    values.length/
     values.reduce(
       (total,value)=>
         total+
         1/value,
       0
-    );
+    )
+  );
 }
 
-function buildLichessMetrics(rows){
+
+/* ============================================================
+   CANDIDATE EXPECTED-POINTS MODEL
+   ============================================================ */
+
+function mateDistanceAdjustment(
+  best,
+  played
+){
+
+  if(
+    best.scoreType!=="mate" ||
+    played.scoreType!=="mate" ||
+    Math.sign(best.scoreValue)!==
+      Math.sign(played.scoreValue)
+  ){
+
+    return{
+      normalized:0,
+      expectedPoints:0
+    };
+  }
+
+  const bestDistance=
+    Math.abs(
+      best.scoreValue
+    );
+
+  const playedDistance=
+    Math.abs(
+      played.scoreValue
+    );
+
+  let deterioration=0;
+
+  if(best.scoreValue>0){
+
+    /*
+      Winning side.
+
+      Larger mate distance is worse.
+    */
+
+    deterioration=
+      Math.max(
+        0,
+        playedDistance-
+        bestDistance
+      );
+
+  }else{
+
+    /*
+      Losing side.
+
+      Smaller mate distance is worse.
+    */
+
+    deterioration=
+      Math.max(
+        0,
+        bestDistance-
+        playedDistance
+      );
+  }
+
+  const normalized=
+    deterioration/
+    Math.max(
+      1,
+      bestDistance,
+      playedDistance
+    );
+
+  const expectedPoints=
+    clamp(
+      normalized*
+      CANDIDATE_MATE_EP_SCALE,
+      0,
+      CANDIDATE_MATE_EP_SCALE
+    );
+
+  return{
+    normalized,
+    expectedPoints
+  };
+}
+
+
+function candidateExpectedPointsLoss(
+  best,
+  played
+){
+
+  const bestExpected=
+    expectedFromWdl(
+      best.wdl
+    );
+
+  const playedExpected=
+    expectedFromWdl(
+      played.wdl
+    );
+
+  const raw=
+    bestExpected===null ||
+    playedExpected===null
+      ?0
+      :Math.max(
+          0,
+          bestExpected-
+          playedExpected
+        );
+
+  const mate=
+    mateDistanceAdjustment(
+      best,
+      played
+    );
+
+  const adjusted=
+    clamp(
+      raw+
+      mate.expectedPoints,
+      0,
+      1
+    );
+
+  return{
+    raw,
+    adjusted,
+    mate
+  };
+}
+
+
+function candidateAccuracyFromEpLoss(
+  expectedPointsLoss
+){
+
+  const loss=
+    clamp(
+      expectedPointsLoss,
+      0,
+      1
+    );
+
+  /*
+    Expected points are stored from 0 to 1.
+
+    The published Lichess move curve accepts a percentage-point
+    loss, so the expected-points loss is multiplied by 100.
+  */
+
+  return lichessAccuracyFromWinPercents(
+    100,
+    100-
+    loss*100
+  );
+}
+
+
+function ordinaryExpectedPointsClass(
+  playedIsBest,
+  expectedPointsLoss
+){
+
+  /*
+    Best is reserved for an exact Stockfish bestmove match.
+  */
+
+  if(playedIsBest){
+    return"Best";
+  }
+
+  if(expectedPointsLoss<=0.02){
+    return"Excellent";
+  }
+
+  if(expectedPointsLoss<=0.05){
+    return"Good";
+  }
+
+  if(expectedPointsLoss<=0.10){
+    return"Inaccuracy";
+  }
+
+  if(expectedPointsLoss<=0.20){
+    return"Mistake";
+  }
+
+  return"Blunder";
+}
+
+
+/* ============================================================
+   DUAL GAME METRICS
+   ============================================================ */
+
+function buildMetrics(rows){
 
   if(!rows.length){
 
@@ -623,7 +1275,7 @@ function buildLichessMetrics(rows){
     };
   }
 
-  const cps=
+  const centipawns=
     rows.map(
       row=>row.afterWhiteCp
     );
@@ -632,7 +1284,8 @@ function buildLichessMetrics(rows){
     lichessWinPercentFromCp(
       LICHESS_INITIAL_CP
     ),
-    ...cps.map(
+
+    ...centipawns.map(
       lichessWinPercentFromCp
     )
   ];
@@ -640,7 +1293,7 @@ function buildLichessMetrics(rows){
   const windowSize=
     clamp(
       Math.floor(
-        cps.length/10
+        centipawns.length/10
       ),
       2,
       8
@@ -691,7 +1344,7 @@ function buildLichessMetrics(rows){
     );
   }
 
-  const weights=
+  const volatilityWeights=
     windows.map(
       values=>
         clamp(
@@ -703,122 +1356,190 @@ function buildLichessMetrics(rows){
         )
     );
 
-  const entries={
+  const byColor={
     w:[],
     b:[]
   };
 
-  for(
-    let index=0;
-    index<rows.length;
-    index++
-  ){
+  rows.forEach(
+    (row,index)=>{
 
-    const color=
-      rows[index].color;
+      const previousWhiteWin=
+        allWinPercents[index];
 
-    const previousWhiteWin=
-      allWinPercents[index];
+      const nextWhiteWin=
+        allWinPercents[index+1];
 
-    const nextWhiteWin=
-      allWinPercents[index+1];
+      const before=
+        row.color==="w"
+          ?previousWhiteWin
+          :100-
+           previousWhiteWin;
 
-    const before=
-      color==="w"
-        ?previousWhiteWin
-        :100-previousWhiteWin;
+      const after=
+        row.color==="w"
+          ?nextWhiteWin
+          :100-
+           nextWhiteWin;
 
-    const after=
-      color==="w"
-        ?nextWhiteWin
-        :100-nextWhiteWin;
+      row.lichessWinBefore=
+        before;
 
-    const accuracy=
-      lichessAccuracyFromWinPercents(
-        before,
-        after
-      );
+      row.lichessWinAfter=
+        after;
 
-    const weight=
-      weights[index] ??
-      0.5;
+      row.lichessWinLoss=
+        Math.max(
+          0,
+          before-after
+        );
 
-    rows[index].winPercentBefore=
-      before;
+      row.lichessAccuracy=
+        lichessAccuracyFromWinPercents(
+          before,
+          after
+        );
 
-    rows[index].winPercentAfter=
-      after;
+      row.lichessVolatilityWeight=
+        volatilityWeights[index] ??
+        0.5;
 
-    rows[index].winPercentLoss=
-      Math.max(
-        0,
-        before-after
-      );
+      /*
+        Compress the Lichess weight range of 0.5 to 12 into a
+        candidate critical-position range of 1 to 3.
+      */
 
-    rows[index].moveAccuracy=
-      accuracy;
+      row.candidateCriticalWeight=
+        1+
+        (
+          CANDIDATE_CRITICAL_MAX_WEIGHT-
+          1
+        )*
+        clamp(
+          row.lichessVolatilityWeight/
+          12,
+          0,
+          1
+        );
 
-    rows[index].volatilityWeight=
-      weight;
-
-    entries[color].push({
-      accuracy,
-      weight
-    });
-  }
+      byColor[row.color]
+        .push(row);
+    }
+  );
 
   const calculateColor=
     color=>{
 
-      const colorEntries=
-        entries[color];
+      const colorRows=
+        byColor[color];
 
-      if(!colorEntries.length){
+      if(!colorRows.length){
         return null;
       }
 
-      const weighted=
+      const lichessAccuracies=
+        colorRows.map(
+          row=>row.lichessAccuracy
+        );
+
+      const candidateAccuracies=
+        colorRows.map(
+          row=>row.candidateAccuracy
+        );
+
+      const lichessWeightedEntries=
+        colorRows.map(
+          row=>({
+            accuracy:
+              row.lichessAccuracy,
+
+            weight:
+              row.lichessVolatilityWeight
+          })
+        );
+
+      const candidateCriticalEntries=
+        colorRows.map(
+          row=>({
+            accuracy:
+              row.candidateAccuracy,
+
+            weight:
+              row.candidateCriticalWeight
+          })
+        );
+
+      const lichessWeighted=
         weightedMean(
-          colorEntries
+          lichessWeightedEntries
         );
 
-      const harmonic=
+      const lichessHarmonic=
         harmonicMean(
-          colorEntries.map(
-            entry=>entry.accuracy
-          )
+          lichessAccuracies
         );
 
-      const arithmetic=
-        colorEntries.reduce(
-          (total,entry)=>
-            total+entry.accuracy,
-          0
-        )/
-        colorEntries.length;
+      const candidateArithmetic=
+        arithmeticMean(
+          candidateAccuracies
+        );
+
+      const candidateHarmonic=
+        harmonicMean(
+          candidateAccuracies
+        );
+
+      const candidateCritical=
+        weightedMean(
+          candidateCriticalEntries
+        );
+
+      const candidateFinal=
+        CANDIDATE_ARITHMETIC_SHARE*
+        candidateArithmetic+
+
+        CANDIDATE_HARMONIC_SHARE*
+        candidateHarmonic+
+
+        CANDIDATE_CRITICAL_SHARE*
+        candidateCritical;
 
       return{
-        arithmetic,
-        weighted,
-        harmonic,
+        lichessArithmetic:
+          arithmeticMean(
+            lichessAccuracies
+          ),
 
-        final:
-          weighted===null ||
-          harmonic===null
-            ?null
-            :(weighted+harmonic)/2
+        lichessWeighted,
+
+        lichessHarmonic,
+
+        lichessFinal:
+          (
+            lichessWeighted+
+            lichessHarmonic
+          )/
+          2,
+
+        candidateArithmetic,
+        candidateHarmonic,
+        candidateCritical,
+        candidateFinal
       };
     };
 
   return{
     windowSize,
-    white:calculateColor("w"),
-    black:calculateColor("b")
+    white:
+      calculateColor("w"),
+    black:
+      calculateColor("b")
   };
 }
 
+
 /* ============================================================
-   SUPABASE AND CHESS.JS
+   SUPABASE
    ============================================================ */
 
 async function loadSupabase(){
@@ -830,9 +1551,11 @@ async function loadSupabase(){
   statusElement.textContent=
     "Loading Supabase connector...";
 
-  const lib=
+  const library=
     await withTimeout(
-      import("https://esm.sh/@supabase/supabase-js@2"),
+      import(
+        "https://esm.sh/@supabase/supabase-js@2"
+      ),
       15000,
       "Supabase library download timed out."
     );
@@ -840,11 +1563,12 @@ async function loadSupabase(){
   checkStopped();
 
   supabaseClient=
-    lib.createClient(
+    library.createClient(
       SUPABASE_URL,
       SUPABASE_PUBLISHABLE_KEY
     );
 }
+
 
 async function getSession(){
 
@@ -875,6 +1599,11 @@ async function getSession(){
   return result.data.session;
 }
 
+
+/* ============================================================
+   CHESS.JS
+   ============================================================ */
+
 async function loadChessParser(){
 
   if(Chess){
@@ -897,14 +1626,17 @@ async function loadChessParser(){
           "Chess parser download timed out."
         );
 
-      if(typeof parser.Chess!=="function"){
+      if(
+        typeof parser.Chess!=="function"
+      ){
 
         throw new Error(
           "Invalid chess parser."
         );
       }
 
-      Chess=parser.Chess;
+      Chess=
+        parser.Chess;
 
       return;
 
@@ -926,6 +1658,11 @@ async function loadChessParser(){
   );
 }
 
+
+/* ============================================================
+   OPENING EXPLORER
+   ============================================================ */
+
 async function getMasterPosition(
   rootFen,
   moves
@@ -934,15 +1671,21 @@ async function getMasterPosition(
   checkStopped();
 
   const key=
-    rootFen+"|"+moves.join(",");
+    rootFen+
+    "|"+
+    moves.join(",");
 
-  if(explorerCache.has(key)){
+  if(
+    explorerCache.has(key)
+  ){
 
     openingCacheHits++;
 
     updateStats();
 
-    return explorerCache.get(key);
+    return explorerCache.get(
+      key
+    );
   }
 
   const session=
@@ -1048,27 +1791,36 @@ async function getMasterPosition(
 
     clearTimeout(timer);
 
-    if(activeController===controller){
+    if(
+      activeController===
+      controller
+    ){
+
       activeController=null;
     }
   }
 }
 
+
 /* ============================================================
-   STOCKFISH
+   STOCKFISH RESET
    ============================================================ */
 
 function resetEngine(
   message="Stockfish stopped."
 ){
 
-  for(const waiter of[
-    currentSearch,
-    readyWaiter,
-    fenWaiter
-  ]){
+  for(
+    const waiter
+    of[
+      currentSearch,
+      readyWaiter,
+      fenWaiter
+    ]
+  ){
 
     if(waiter){
+
       clearTimeout(
         waiter.timer
       );
@@ -1099,6 +1851,11 @@ function resetEngine(
   engineInitialisation=null;
 }
 
+
+/* ============================================================
+   STOCKFISH MESSAGE PARSER
+   ============================================================ */
+
 function handleEngineLine(line){
 
   line=line.trim();
@@ -1107,7 +1864,11 @@ function handleEngineLine(line){
     return;
   }
 
-  if(line.startsWith("id name ")){
+  if(
+    line.startsWith(
+      "id name "
+    )
+  ){
 
     engineMetadata.name=
       line.slice(8);
@@ -1115,7 +1876,11 @@ function handleEngineLine(line){
     updateEngineMetadata();
   }
 
-  if(line.startsWith("id author ")){
+  if(
+    line.startsWith(
+      "id author "
+    )
+  ){
 
     engineMetadata.author=
       line.slice(10);
@@ -1170,7 +1935,11 @@ function handleEngineLine(line){
     updateEngineMetadata();
   }
 
-  if(line.includes("CRITICAL ERROR")){
+  if(
+    line.includes(
+      "CRITICAL ERROR"
+    )
+  ){
 
     engineMetadata.criticalErrors
       .push(line);
@@ -1267,39 +2036,36 @@ function handleEngineLine(line){
     line.includes(" score ")
   ){
 
+    const extractNumber=
+      pattern=>
+        Number(
+          line.match(pattern)?.[1]||
+          0
+        );
+
     const depth=
-      Number(
-        line.match(
-          /\bdepth\s+(\d+)/
-        )?.[1]||0
+      extractNumber(
+        /\bdepth\s+(\d+)/
       );
 
     const seldepth=
-      Number(
-        line.match(
-          /\bseldepth\s+(\d+)/
-        )?.[1]||0
+      extractNumber(
+        /\bseldepth\s+(\d+)/
       );
 
     const nodes=
-      Number(
-        line.match(
-          /\bnodes\s+(\d+)/
-        )?.[1]||0
+      extractNumber(
+        /\bnodes\s+(\d+)/
       );
 
     const timeMs=
-      Number(
-        line.match(
-          /\btime\s+(\d+)/
-        )?.[1]||0
+      extractNumber(
+        /\btime\s+(\d+)/
       );
 
     const hashfull=
-      Number(
-        line.match(
-          /\bhashfull\s+(\d+)/
-        )?.[1]||0
+      extractNumber(
+        /\bhashfull\s+(\d+)/
       );
 
     const cp=
@@ -1335,6 +2101,7 @@ function handleEngineLine(line){
     if(cp||mate){
 
       const candidate={
+
         scoreType:
           cp
             ?"cp"
@@ -1350,9 +2117,17 @@ function handleEngineLine(line){
         wdl:
           wdlMatch
             ?{
-                w:Number(wdlMatch[1]),
-                d:Number(wdlMatch[2]),
-                l:Number(wdlMatch[3])
+                w:Number(
+                  wdlMatch[1]
+                ),
+
+                d:Number(
+                  wdlMatch[2]
+                ),
+
+                l:Number(
+                  wdlMatch[3]
+                )
               }
             :null,
 
@@ -1373,7 +2148,8 @@ function handleEngineLine(line){
 
       if(
         !currentSearch[target] ||
-        nodes>=currentSearch[target].nodes
+        nodes>=
+        currentSearch[target].nodes
       ){
 
         currentSearch[target]=
@@ -1382,7 +2158,11 @@ function handleEngineLine(line){
     }
   }
 
-  if(line.startsWith("bestmove ")){
+  if(
+    line.startsWith(
+      "bestmove "
+    )
+  ){
 
     const search=
       currentSearch;
@@ -1427,6 +2207,11 @@ function handleEngineLine(line){
   }
 }
 
+
+/* ============================================================
+   STOCKFISH INITIALISATION
+   ============================================================ */
+
 async function waitReady(
   timeout=30000
 ){
@@ -1467,6 +2252,7 @@ async function waitReady(
     }
   );
 }
+
 
 async function initialiseStockfish(){
 
@@ -1590,6 +2376,7 @@ async function initialiseStockfish(){
   }
 }
 
+
 async function startNewGame(){
 
   await initialiseStockfish();
@@ -1601,6 +2388,7 @@ async function startNewGame(){
   await waitReady();
 }
 
+
 async function clearHash(){
 
   worker.postMessage(
@@ -1609,6 +2397,7 @@ async function clearHash(){
 
   await waitReady();
 }
+
 
 function positionCommand(
   rootFen,
@@ -1620,11 +2409,17 @@ function positionCommand(
     rootFen+
     (
       moves.length
-        ?" moves "+moves.join(" ")
+        ?" moves "+
+          moves.join(" ")
         :""
     )
   );
 }
+
+
+/* ============================================================
+   FEN AUDIT
+   ============================================================ */
 
 async function auditPosition(
   rootFen,
@@ -1634,14 +2429,11 @@ async function auditPosition(
 
   await initialiseStockfish();
 
-  const command=
+  worker.postMessage(
     positionCommand(
       rootFen,
       moves
-    );
-
-  worker.postMessage(
-    command
+    )
   );
 
   const actual=
@@ -1685,11 +2477,25 @@ async function auditPosition(
 
   return{
     ok,
-    expected:normalizeFen(expectedFen),
-    actual:normalizeFen(actual),
-    command
+
+    expected:
+      normalizeFen(expectedFen),
+
+    actual:
+      normalizeFen(actual),
+
+    command:
+      positionCommand(
+        rootFen,
+        moves
+      )
   };
 }
+
+
+/* ============================================================
+   STOCKFISH SEARCH
+   ============================================================ */
 
 async function runRawSearch({
   rootFen,
@@ -1707,9 +2513,13 @@ async function runRawSearch({
   const signature=
     `${rootFen}|${moves.join(" ")}|`+
     `searchmoves=${searchMoves.join(" ")}|`+
-    `nodes=${nodes}|mpv=${MULTIPV}|hash=${HASH_MB}`;
+    `nodes=${nodes}|`+
+    `mpv=${MULTIPV}|`+
+    `hash=${HASH_MB}`;
 
-  if(engineCache.has(signature)){
+  if(
+    engineCache.has(signature)
+  ){
 
     engineCacheHits++;
 
@@ -1776,7 +2586,9 @@ async function runRawSearch({
             ()=>{
 
               if(worker){
-                worker.postMessage("stop");
+                worker.postMessage(
+                  "stop"
+                );
               }
 
               const search=
@@ -1804,8 +2616,11 @@ async function runRawSearch({
       moves
     );
 
-  result.goCommand=go;
-  result.audit=auditResult;
+  result.goCommand=
+    go;
+
+  result.audit=
+    auditResult;
 
   engineCache.set(
     signature,
@@ -1814,6 +2629,7 @@ async function runRawSearch({
 
   return result;
 }
+
 
 async function runExactSearch(args){
 
@@ -1844,11 +2660,15 @@ async function runExactSearch(args){
   return result;
 }
 
+
 /* ============================================================
-   CLASSIFICATION
+   LEGACY TACTICAL DIAGNOSTIC
    ============================================================ */
 
-function rootLoss(best,played){
+function legacyLoss(
+  best,
+  played
+){
 
   const bestExpected=
     expectedFromWdl(
@@ -1872,6 +2692,7 @@ function rootLoss(best,played){
 
   let cpLoss=null;
   let mateState="none";
+
   const badges=[];
 
   if(
@@ -1895,8 +2716,12 @@ function rootLoss(best,played){
     )
   ){
 
-    mateState="missedForcedMate";
-    badges.push("Missed mate");
+    mateState=
+      "missedForcedMate";
+
+    badges.push(
+      "Missed mate"
+    );
 
   }else if(
     !(
@@ -1907,8 +2732,12 @@ function rootLoss(best,played){
     played.scoreValue<0
   ){
 
-    mateState="allowedForcedMate";
-    badges.push("Allowed mate");
+    mateState=
+      "allowedForcedMate";
+
+    badges.push(
+      "Allowed mate"
+    );
 
   }else if(
     best.scoreType==="mate" &&
@@ -1917,8 +2746,12 @@ function rootLoss(best,played){
     played.scoreValue>0
   ){
 
-    mateState="bothForceMate";
-    badges.push("Forced mate retained");
+    mateState=
+      "bothForceMate";
+
+    badges.push(
+      "Forced mate retained"
+    );
 
   }else if(
     best.scoreType==="mate" &&
@@ -1927,12 +2760,17 @@ function rootLoss(best,played){
     played.scoreValue<0
   ){
 
-    mateState="bothLoseByMate";
-    badges.push("Already lost");
+    mateState=
+      "bothLoseByMate";
+
+    badges.push(
+      "Already lost"
+    );
 
   }else{
 
-    mateState="mixedScore";
+    mateState=
+      "mixedScore";
   }
 
   return{
@@ -1943,54 +2781,32 @@ function rootLoss(best,played){
   };
 }
 
-function classifyMove({
+
+function tacticalClass(
   playedIsBest,
   loss
-}){
-
-  const badges=[
-    ...loss.badges
-  ];
+){
 
   if(playedIsBest){
-
-    return{
-      quality:"Best",
-      badges
-    };
+    return"Best";
   }
 
   if(
     loss.mateState==="missedForcedMate" ||
     loss.mateState==="allowedForcedMate"
   ){
-
-    return{
-      quality:"Blunder",
-      badges
-    };
+    return"Blunder";
   }
 
   if(
     loss.mateState==="bothForceMate" ||
     loss.mateState==="bothLoseByMate"
   ){
-
-    return{
-      quality:"Excellent",
-      badges
-    };
+    return"Excellent";
   }
 
   if(loss.cpLoss===null){
-
-    return{
-      quality:"Inaccuracy",
-      badges:[
-        ...badges,
-        "Mixed score comparison"
-      ]
-    };
+    return"Inaccuracy";
   }
 
   const cp=
@@ -2006,11 +2822,7 @@ function classifyMove({
       wdl<=0.02
     )
   ){
-
-    return{
-      quality:"Excellent",
-      badges
-    };
+    return"Excellent";
   }
 
   if(
@@ -2020,37 +2832,23 @@ function classifyMove({
       wdl<=0.06
     )
   ){
-
-    return{
-      quality:"Good",
-      badges
-    };
+    return"Good";
   }
 
   if(cp<=175){
-
-    return{
-      quality:"Inaccuracy",
-      badges
-    };
+    return"Inaccuracy";
   }
 
   if(cp<=350){
-
-    return{
-      quality:"Mistake",
-      badges
-    };
+    return"Mistake";
   }
 
-  return{
-    quality:"Blunder",
-    badges
-  };
+  return"Blunder";
 }
 
+
 /* ============================================================
-   TABLE AND SUMMARY
+   TABLE HELPERS
    ============================================================ */
 
 function addCell(
@@ -2060,25 +2858,37 @@ function addCell(
 ){
 
   const cell=
-    document.createElement("td");
+    document.createElement(
+      "td"
+    );
 
-  cell.textContent=value;
+  cell.textContent=
+    value;
 
   if(className){
-    cell.className=className;
+    cell.className=
+      className;
   }
 
-  parent.appendChild(cell);
+  parent.appendChild(
+    cell
+  );
 
   return cell;
 }
 
-function addBadges(cell,badges){
+
+function addBadges(
+  cell,
+  badges
+){
 
   for(const badge of badges){
 
     const span=
-      document.createElement("span");
+      document.createElement(
+        "span"
+      );
 
     span.className=
       "badge "+
@@ -2088,129 +2898,208 @@ function addBadges(cell,badges){
           :""
       );
 
-    span.textContent=badge;
+    span.textContent=
+      badge;
 
-    cell.appendChild(span);
+    cell.appendChild(
+      span
+    );
   }
 }
 
-function createGameView(number,history){
+
+/* ============================================================
+   GAME VIEW
+   ============================================================ */
+
+function createGameView(
+  number,
+  history
+){
 
   const box=
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  box.className="box";
+  box.className=
+    "box";
 
   const title=
-    document.createElement("h2");
+    document.createElement(
+      "h2"
+    );
 
-  title.textContent="Game "+number;
+  title.textContent=
+    "Game "+number;
 
-  box.appendChild(title);
+  box.appendChild(
+    title
+  );
 
   const link=
-    document.createElement("a");
+    document.createElement(
+      "a"
+    );
 
   link.href=
     "https://lichess.org/analysis/pgn/"+
     encodeURIComponent(
       history
-        .map(move=>move.san)
+        .map(
+          move=>move.san
+        )
         .join("_")
     );
 
-  link.target="_blank";
-  link.rel="noopener noreferrer";
+  link.target=
+    "_blank";
+
+  link.rel=
+    "noopener noreferrer";
+
   link.textContent=
     "Open game in Lichess Analysis";
 
   box.appendChild(link);
 
   const note=
-    document.createElement("p");
+    document.createElement(
+      "p"
+    );
 
-  note.className="small";
+  note.className=
+    "small";
 
   note.textContent=
-    "Stockfish 19 with Lichess Win%-based move accuracy and volatility/harmonic game aggregation.";
+    "Dual-model diagnostic: Lichess sequential Win% versus provisional Chess.com candidate expected-points model.";
 
   box.appendChild(note);
 
   const wrap=
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  wrap.className="table-wrap";
+  wrap.className=
+    "table-wrap";
 
   const table=
-    document.createElement("table");
+    document.createElement(
+      "table"
+    );
 
   const head=
-    document.createElement("thead");
+    document.createElement(
+      "thead"
+    );
 
   const headerRow=
-    document.createElement("tr");
+    document.createElement(
+      "tr"
+    );
 
   for(const label of[
     "Ply",
     "Move",
-    "Move accuracy",
-    "Quality",
+    "Lichess acc",
+    "Candidate acc",
+    "Candidate ordinary class",
+    "Display label",
+    "Tactical label",
     "Badges",
     "After eval",
-    "Win% before",
-    "Win% after",
-    "Win% loss",
-    "Volatility weight",
+    "EP loss raw",
+    "EP loss adjusted",
+    "Mate adj",
+    "L Win% loss",
+    "L volatility",
+    "Critical wt",
     "Best move",
     "Best root",
     "Played root",
     "CP loss",
     "WDL loss",
-    "Search confidence",
-    "FEN audit",
-    "Master games",
-    "Share",
+    "Confidence",
+    "FEN",
     "Opening",
     "Diagnostics"
   ]){
 
     const th=
-      document.createElement("th");
+      document.createElement(
+        "th"
+      );
 
-    th.textContent=label;
+    th.textContent=
+      label;
 
-    headerRow.appendChild(th);
+    headerRow.appendChild(
+      th
+    );
   }
 
-  head.appendChild(headerRow);
-  table.appendChild(head);
+  head.appendChild(
+    headerRow
+  );
+
+  table.appendChild(
+    head
+  );
 
   const tbody=
-    document.createElement("tbody");
+    document.createElement(
+      "tbody"
+    );
 
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  box.appendChild(wrap);
+  table.appendChild(
+    tbody
+  );
+
+  wrap.appendChild(
+    table
+  );
+
+  box.appendChild(
+    wrap
+  );
 
   const summary=
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  summary.className="summary";
+  summary.className=
+    "summary";
 
-  box.appendChild(summary);
-  resultsElement.appendChild(box);
+  box.appendChild(
+    summary
+  );
 
-  return{
+  resultsElement.appendChild(
+    box
+  );
+
+  const view={
     tbody,
     summary,
     rows:[]
   };
+
+  gameViews.push(view);
+
+  return view;
 }
+
+
+/* ============================================================
+   SUMMARY
+   ============================================================ */
 
 function updateSummary(view){
 
   const metrics=
-    buildLichessMetrics(
+    buildMetrics(
       view.rows
     );
 
@@ -2219,24 +3108,40 @@ function updateSummary(view){
     b:{}
   };
 
-  for(const name of QUALITY_CLASSES){
+  for(
+    const quality
+    of QUALITY_CLASSES
+  ){
 
-    counts.w[name]=0;
-    counts.b[name]=0;
+    counts.w[quality]=0;
+    counts.b[quality]=0;
   }
 
   for(const row of view.rows){
 
-    counts[row.color][row.quality]++;
+    if(
+      counts[row.color][row.displayLabel]===
+      undefined
+    ){
+
+      counts[row.color][row.displayLabel]=0;
+    }
+
+    counts[row.color][row.displayLabel]++;
   }
 
   view.summary.replaceChildren();
 
   const item=
-    (text,className="")=>{
+    (
+      text,
+      className=""
+    )=>{
 
       const div=
-        document.createElement("div");
+        document.createElement(
+          "div"
+        );
 
       div.textContent=text;
 
@@ -2247,47 +3152,259 @@ function updateSummary(view){
       view.summary.appendChild(div);
     };
 
-  const display=value=>
-    value===null ||
-    value===undefined
+  const display=
+    value=>
+      value===null ||
+      value===undefined
+        ?"-"
+        :value.toFixed(1)+"%";
+
+  const target=
+    color=>{
+
+      const input=
+        color==="w"
+          ?targetWhite
+          :targetBlack;
+
+      if(input.value===""){
+        return null;
+      }
+
+      return Number(
+        input.value
+      );
+    };
+
+  item(
+    "Metric",
+    "summary-header"
+  );
+
+  item(
+    "White",
+    "summary-header"
+  );
+
+  item(
+    "Black",
+    "summary-header"
+  );
+
+  item(
+    "Lichess game accuracy",
+    "model-lichess"
+  );
+
+  item(
+    display(
+      metrics.white
+        ?.lichessFinal
+    ),
+    "model-lichess"
+  );
+
+  item(
+    display(
+      metrics.black
+        ?.lichessFinal
+    ),
+    "model-lichess"
+  );
+
+  item(
+    "Candidate game accuracy",
+    "model-candidate"
+  );
+
+  item(
+    display(
+      metrics.white
+        ?.candidateFinal
+    ),
+    "model-candidate"
+  );
+
+  item(
+    display(
+      metrics.black
+        ?.candidateFinal
+    ),
+    "model-candidate"
+  );
+
+  item(
+    "Optional Chess.com target"
+  );
+
+  item(
+    display(
+      target("w")
+    )
+  );
+
+  item(
+    display(
+      target("b")
+    )
+  );
+
+  item(
+    "Candidate error vs target"
+  );
+
+  item(
+    target("w")===null
       ?"-"
-      :value.toFixed(1)+"%";
+      :(
+          metrics.white.candidateFinal-
+          target("w")
+        ).toFixed(1)
+  );
 
-  item("Metric","summary-header");
-  item("White","summary-header");
-  item("Black","summary-header");
+  item(
+    target("b")===null
+      ?"-"
+      :(
+          metrics.black.candidateFinal-
+          target("b")
+        ).toFixed(1)
+  );
 
-  item("Lichess game accuracy");
-  item(display(metrics.white?.final));
-  item(display(metrics.black?.final));
+  item(
+    "Candidate arithmetic"
+  );
 
-  item("Volatility-weighted mean");
-  item(display(metrics.white?.weighted));
-  item(display(metrics.black?.weighted));
+  item(
+    display(
+      metrics.white
+        ?.candidateArithmetic
+    )
+  );
 
-  item("Harmonic mean");
-  item(display(metrics.white?.harmonic));
-  item(display(metrics.black?.harmonic));
+  item(
+    display(
+      metrics.black
+        ?.candidateArithmetic
+    )
+  );
 
-  item("Arithmetic mean: diagnostic");
-  item(display(metrics.white?.arithmetic));
-  item(display(metrics.black?.arithmetic));
+  item(
+    "Candidate harmonic"
+  );
 
-  item("Volatility window size");
-  item(String(metrics.windowSize));
-  item(String(metrics.windowSize));
+  item(
+    display(
+      metrics.white
+        ?.candidateHarmonic
+    )
+  );
 
-  for(const name of QUALITY_CLASSES){
+  item(
+    display(
+      metrics.black
+        ?.candidateHarmonic
+    )
+  );
 
-    item(name,name);
-    item(counts.w[name]);
-    item(counts.b[name]);
+  item(
+    "Candidate critical mean"
+  );
+
+  item(
+    display(
+      metrics.white
+        ?.candidateCritical
+    )
+  );
+
+  item(
+    display(
+      metrics.black
+        ?.candidateCritical
+    )
+  );
+
+  item(
+    "Lichess weighted mean"
+  );
+
+  item(
+    display(
+      metrics.white
+        ?.lichessWeighted
+    )
+  );
+
+  item(
+    display(
+      metrics.black
+        ?.lichessWeighted
+    )
+  );
+
+  item(
+    "Lichess harmonic mean"
+  );
+
+  item(
+    display(
+      metrics.white
+        ?.lichessHarmonic
+    )
+  );
+
+  item(
+    display(
+      metrics.black
+        ?.lichessHarmonic
+    )
+  );
+
+  item(
+    "Volatility window size"
+  );
+
+  item(
+    String(
+      metrics.windowSize
+    )
+  );
+
+  item(
+    String(
+      metrics.windowSize
+    )
+  );
+
+  for(
+    const quality
+    of QUALITY_CLASSES
+  ){
+
+    item(
+      quality,
+      quality
+    );
+
+    item(
+      counts.w[quality]||0
+    );
+
+    item(
+      counts.b[quality]||0
+    );
   }
 }
 
+
+/* ============================================================
+   TABLE RENDER
+   ============================================================ */
+
 function renderTable(view){
 
-  buildLichessMetrics(
+  buildMetrics(
     view.rows
   );
 
@@ -2296,9 +3413,15 @@ function renderTable(view){
   for(const row of view.rows){
 
     const tr=
-      document.createElement("tr");
+      document.createElement(
+        "tr"
+      );
 
-    addCell(tr,row.ply);
+    addCell(
+      tr,
+      row.ply
+    );
+
     addCell(
       tr,
       `${row.san} (${row.uci})`
@@ -2306,43 +3429,88 @@ function renderTable(view){
 
     addCell(
       tr,
-      row.moveAccuracy.toFixed(1)+"%"
+      row.lichessAccuracy
+        .toFixed(1)+
+      "%"
     );
 
     addCell(
       tr,
-      row.quality,
-      row.quality
+      row.candidateAccuracy
+        .toFixed(1)+
+      "%"
+    );
+
+    addCell(
+      tr,
+      row.candidateOrdinaryClass,
+      row.candidateOrdinaryClass
+    );
+
+    addCell(
+      tr,
+      row.displayLabel,
+      row.displayLabel
+    );
+
+    addCell(
+      tr,
+      row.tacticalLabel,
+      row.tacticalLabel
     );
 
     const badgeCell=
-      addCell(tr,"");
+      addCell(
+        tr,
+        ""
+      );
 
     addBadges(
       badgeCell,
       row.badges
     );
 
-    addCell(tr,row.afterEval);
-
     addCell(
       tr,
-      row.winPercentBefore.toFixed(2)+"%"
+      row.afterEval
     );
 
     addCell(
       tr,
-      row.winPercentAfter.toFixed(2)+"%"
+      row.candidateEp.raw
+        .toFixed(3)
     );
 
     addCell(
       tr,
-      row.winPercentLoss.toFixed(3)
+      row.candidateEp.adjusted
+        .toFixed(3)
     );
 
     addCell(
       tr,
-      row.volatilityWeight.toFixed(3)
+      row.candidateEp
+        .mate
+        .expectedPoints
+        .toFixed(3)
+    );
+
+    addCell(
+      tr,
+      row.lichessWinLoss
+        .toFixed(3)
+    );
+
+    addCell(
+      tr,
+      row.lichessVolatilityWeight
+        .toFixed(3)
+    );
+
+    addCell(
+      tr,
+      row.candidateCriticalWeight
+        .toFixed(3)
     );
 
     addCell(
@@ -2350,21 +3518,30 @@ function renderTable(view){
       row.bestMove||"-"
     );
 
-    addCell(tr,row.bestRoot);
-    addCell(tr,row.playedRoot);
+    addCell(
+      tr,
+      row.bestRoot
+    );
+
+    addCell(
+      tr,
+      row.playedRoot
+    );
 
     addCell(
       tr,
       row.cpLoss===null
         ?"-"
-        :(row.cpLoss/100).toFixed(2)
+        :(row.cpLoss/100)
+          .toFixed(2)
     );
 
     addCell(
       tr,
       row.wdlLoss===null
         ?"-"
-        :row.wdlLoss.toFixed(3)
+        :row.wdlLoss
+          .toFixed(3)
     );
 
     addCell(
@@ -2387,20 +3564,6 @@ function renderTable(view){
 
     addCell(
       tr,
-      row.masterGames===null
-        ?"-"
-        :row.masterGames.toLocaleString()
-    );
-
-    addCell(
-      tr,
-      row.share===null
-        ?"-"
-        :row.share.toFixed(2)+"%"
-    );
-
-    addCell(
-      tr,
       row.opening
         ?(
             row.opening.eco+
@@ -2411,47 +3574,72 @@ function renderTable(view){
     );
 
     const diagnosticCell=
-      addCell(tr,"");
+      addCell(
+        tr,
+        ""
+      );
 
     const details=
-      document.createElement("details");
+      document.createElement(
+        "details"
+      );
 
-    const detailsSummary=
-      document.createElement("summary");
+    const summary=
+      document.createElement(
+        "summary"
+      );
 
     const pre=
-      document.createElement("pre");
+      document.createElement(
+        "pre"
+      );
 
-    detailsSummary.textContent=
-      "Engine details";
+    summary.textContent=
+      "Details";
 
     pre.textContent=
       row.diagnostic+
       "\n\n"+
-      `Lichess Win% before: ${row.winPercentBefore.toFixed(6)}\n`+
-      `Lichess Win% after: ${row.winPercentAfter.toFixed(6)}\n`+
-      `Lichess Win% loss: ${row.winPercentLoss.toFixed(6)}\n`+
-      `Lichess move accuracy: ${row.moveAccuracy.toFixed(6)}%\n`+
-      `Volatility weight: ${row.volatilityWeight.toFixed(6)}`;
+      `Lichess Win% before: ${row.lichessWinBefore.toFixed(6)}\n`+
+      `Lichess Win% after: ${row.lichessWinAfter.toFixed(6)}\n`+
+      `Lichess Win% loss: ${row.lichessWinLoss.toFixed(6)}\n`+
+      `Lichess accuracy: ${row.lichessAccuracy.toFixed(6)}%\n`+
+      `Lichess volatility weight: ${row.lichessVolatilityWeight.toFixed(6)}\n\n`+
+      `Candidate EP loss raw: ${row.candidateEp.raw.toFixed(6)}\n`+
+      `Candidate mate EP adjustment: ${row.candidateEp.mate.expectedPoints.toFixed(6)}\n`+
+      `Candidate EP loss adjusted: ${row.candidateEp.adjusted.toFixed(6)}\n`+
+      `Candidate move accuracy: ${row.candidateAccuracy.toFixed(6)}%\n`+
+      `Candidate critical weight: ${row.candidateCriticalWeight.toFixed(6)}\n`+
+      `Candidate ordinary class: ${row.candidateOrdinaryClass}\n`+
+      `Display label: ${row.displayLabel}`;
 
     details.append(
-      detailsSummary,
+      summary,
       pre
     );
 
-    diagnosticCell.append(details);
-    view.tbody.appendChild(tr);
+    diagnosticCell.append(
+      details
+    );
+
+    view.tbody.appendChild(
+      tr
+    );
   }
 
   updateSummary(view);
   updateStats();
 }
 
+
 /* ============================================================
-   GAME ANALYSIS
+   ANALYSE GAME
    ============================================================ */
 
-async function analyseGame(pgn,number){
+async function analyseGame(
+  pgn,
+  number
+){
 
   const parsed=
     new Chess();
@@ -2481,7 +3669,9 @@ async function analyseGame(pgn,number){
     history[0].before;
 
   const replay=
-    new Chess(rootFen);
+    new Chess(
+      rootFen
+    );
 
   const moves=[];
 
@@ -2511,6 +3701,9 @@ async function analyseGame(pgn,number){
     const whiteToMove=
       replay.turn()==="w";
 
+    const legalMoveCount=
+      replay.moves().length;
+
     const played=
       replay.move(
         original.san
@@ -2524,7 +3717,9 @@ async function analyseGame(pgn,number){
     }
 
     const playedUci=
-      moveToUci(played);
+      moveToUci(
+        played
+      );
 
     const afterMoves=
       moves.concat(
@@ -2587,7 +3782,9 @@ async function analyseGame(pgn,number){
           );
 
         if(opening){
-          latestOpening=opening;
+
+          latestOpening=
+            opening;
         }
 
         if(opening){
@@ -2595,14 +3792,20 @@ async function analyseGame(pgn,number){
           isBook=true;
 
           masterGames=
-            gameCount(entry);
+            gameCount(
+              entry
+            );
 
           const total=
-            gameCount(beforeData);
+            gameCount(
+              beforeData
+            );
 
           share=
             total
-              ?masterGames/total*100
+              ?masterGames/
+                total*
+                100
               :0;
 
         }else{
@@ -2640,23 +3843,49 @@ async function analyseGame(pgn,number){
             rootFen,
             moves,
             expectedFen:preFen,
+
             searchMoves:[
               playedUci
             ],
+
             audit:false
           });
 
     const loss=
-      rootLoss(
+      legacyLoss(
         best,
         forced
       );
 
-    const classification=
-      classifyMove({
+    const candidateEp=
+      candidateExpectedPointsLoss(
+        best,
+        forced
+      );
+
+    const candidateAccuracy=
+      candidateAccuracyFromEpLoss(
+        candidateEp.adjusted
+      );
+
+    const candidateOrdinaryClass=
+      ordinaryExpectedPointsClass(
+        playedIsBest,
+        candidateEp.adjusted
+      );
+
+    const tacticalLabel=
+      tacticalClass(
         playedIsBest,
         loss
-      });
+      );
+
+    const displayLabel=
+      isBook
+        ?"Book"
+        :legalMoveCount===1
+          ?"Forced"
+          :candidateOrdinaryClass;
 
     let afterResult=null;
     let afterEval;
@@ -2707,7 +3936,14 @@ async function analyseGame(pgn,number){
           ?["Book"]
           :[]
       ),
-      ...classification.badges
+
+      ...(
+        legalMoveCount===1
+          ?["Forced"]
+          :[]
+      ),
+
+      ...loss.badges
     ];
 
     const exact=
@@ -2730,22 +3966,22 @@ async function analyseGame(pgn,number){
     const diagnostic=[
       `Version: ${VERSION}`,
 
-      `Pre-move position: ${best.command}`,
-
-      `Pre-move FEN: ${best.audit?.actual||preFen}`,
+      `Pre-move FEN: ${preFen}`,
 
       `Played move: ${playedUci}`,
 
+      `Legal moves before play: ${legalMoveCount}`,
+
       `Stockfish best move: ${best.bestMove||"n/a"}`,
 
-      `Exact best-move match: ${playedIsBest?"yes":"no"}`,
+      `Exact bestmove match: ${playedIsBest?"yes":"no"}`,
 
       `Best search: ${best.goCommand}\n${best.raw}`,
 
       `Played search: ${forced.goCommand}\n${forced.raw}`,
 
       afterResult
-        ?`After-position search: ${afterResult.goCommand}\n`+
+        ?`After search: ${afterResult.goCommand}\n`+
          `After FEN: ${afterResult.audit?.actual||afterFen}\n`+
          `${afterResult.raw}`
         :`After position: ${
@@ -2754,9 +3990,7 @@ async function analyseGame(pgn,number){
               :"draw"
           }`,
 
-      `After-position White CP for Lichess calculation: ${afterWhiteCp}`,
-
-      `Classification loss: cp=${
+      `Legacy loss: cp=${
         loss.cpLoss===null
           ?"n/a"
           :loss.cpLoss
@@ -2767,7 +4001,9 @@ async function analyseGame(pgn,number){
       }, mateState=${
         loss.mateState
       }`
-    ].join("\n\n");
+    ].join(
+      "\n\n"
+    );
 
     view.rows.push({
       ply:index+1,
@@ -2775,37 +4011,54 @@ async function analyseGame(pgn,number){
       san:played.san,
       uci:playedUci,
 
-      quality:
-        isBook
-          ?"Book"
-          :classification.quality,
+      displayLabel,
+      tacticalLabel,
+      candidateOrdinaryClass,
+
+      candidateEp,
+      candidateAccuracy,
 
       badges,
       afterEval,
       afterWhiteCp,
 
-      moveAccuracy:100,
-      winPercentBefore:50,
-      winPercentAfter:50,
-      winPercentLoss:0,
-      volatilityWeight:0.5,
+      lichessAccuracy:100,
+      lichessWinBefore:50,
+      lichessWinAfter:50,
+      lichessWinLoss:0,
+      lichessVolatilityWeight:0.5,
 
-      bestMove:best.bestMove,
-      bestRoot:formatRootScore(best),
-      playedRoot:formatRootScore(forced),
+      candidateCriticalWeight:1,
 
-      cpLoss:loss.cpLoss,
-      wdlLoss:loss.wdlLoss,
+      bestMove:
+        best.bestMove,
+
+      bestRoot:
+        formatRootScore(best),
+
+      playedRoot:
+        formatRootScore(forced),
+
+      cpLoss:
+        loss.cpLoss,
+
+      wdlLoss:
+        loss.wdlLoss,
 
       confidence:
         exact
           ?"Exact"
           :"Bound result",
 
-      audit:auditOk,
+      audit:
+        auditOk,
+
       masterGames,
       share,
-      opening:latestOpening,
+
+      opening:
+        latestOpening,
+
       diagnostic
     });
 
@@ -2819,12 +4072,15 @@ async function analyseGame(pgn,number){
         )
     );
 
-    moves.push(playedUci);
+    moves.push(
+      playedUci
+    );
   }
 }
 
+
 /* ============================================================
-   CONTROLS
+   ANALYSE BUTTON
    ============================================================ */
 
 analyseButton.addEventListener(
@@ -2853,14 +4109,19 @@ analyseButton.addEventListener(
 
     openingRequests=0;
     openingCacheHits=0;
+
     engineSearches=0;
     engineCacheHits=0;
+
     fenAudits=0;
     fenFailures=0;
+
     boundRetries=0;
 
     engineMetadata.criticalErrors=[];
     engineMetadata.nnueMessages=[];
+
+    gameViews.length=0;
 
     analyseButton.disabled=true;
     stopButton.disabled=false;
@@ -2908,6 +4169,7 @@ analyseButton.addEventListener(
     }finally{
 
       running=false;
+
       analyseButton.disabled=false;
       stopButton.disabled=true;
 
@@ -2915,6 +4177,36 @@ analyseButton.addEventListener(
     }
   }
 );
+
+
+/* ============================================================
+   TARGET INPUT REFRESH
+   ============================================================ */
+
+targetWhite.addEventListener(
+  "input",
+  ()=>{
+
+    for(const view of gameViews){
+      updateSummary(view);
+    }
+  }
+);
+
+targetBlack.addEventListener(
+  "input",
+  ()=>{
+
+    for(const view of gameViews){
+      updateSummary(view);
+    }
+  }
+);
+
+
+/* ============================================================
+   STOP BUTTON
+   ============================================================ */
 
 stopButton.addEventListener(
   "click",
@@ -2927,18 +4219,28 @@ stopButton.addEventListener(
     }
 
     if(worker){
-      worker.postMessage("stop");
+      worker.postMessage(
+        "stop"
+      );
     }
 
-    resetEngine("Stopped.");
+    resetEngine(
+      "Stopped."
+    );
 
     statusElement.textContent=
       "Stopping. Completed results remain visible.";
   }
 );
 
+
+/* ============================================================
+   START
+   ============================================================ */
+
 updateStats();
 
 </script>
+
 </body>
 </html>
