@@ -1,55 +1,140 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chess Move Classification Tester v1.14.4</title>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chess Move Classification Tester v1.14.5</title>
 <style>
-body{font-family:Arial,sans-serif;max-width:1900px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}.box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}textarea{width:100%;box-sizing:border-box;min-height:220px;padding:12px;margin:8px 0 15px;font-family:monospace}button{padding:11px 18px;margin:12px 7px 0 0;font-size:15px;cursor:pointer}button:disabled{opacity:.5}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;margin-top:15px;font-size:11px}th,td{border-bottom:1px solid #ddd;padding:6px;text-align:left;vertical-align:top}th{background:#eee;position:sticky;top:0;white-space:nowrap}.Best{color:#10b981;font-weight:bold}.Excellent{color:#65a30d;font-weight:bold}.Good{color:#475569;font-weight:bold}.Inaccuracy{color:#a17a00;font-weight:bold}.Mistake{color:#f97316;font-weight:bold}.Blunder{color:#dc2626;font-weight:bold}.Forced{color:#7c3aed;font-weight:bold}.notice{background:#eef5ff;padding:12px;border-radius:7px}.warning{background:#fff4e5;padding:12px;border-radius:7px}.status{margin-top:12px;font-weight:bold}.small,.stats{color:#555;margin-top:8px}.summary{display:grid;grid-template-columns:260px 1fr 1fr;max-width:800px;gap:7px;margin-top:15px}.summary>div{padding:5px;border-bottom:1px solid #eee}.summary-header{font-weight:bold;background:#eee}.model-l{background:#eef5ff}.model-c{background:#ecfdf5}.ok{color:#15803d;font-weight:bold}.bad{color:#b91c1c;font-weight:bold}.target{display:grid;grid-template-columns:170px 120px 120px;gap:8px;align-items:center;margin-top:12px}.target input{padding:7px;width:100px}details{max-width:900px}pre{white-space:pre-wrap;overflow-wrap:anywhere}
-</style></head><body>
-<h1>Chess Move Classification Tester v1.14.4</h1>
-<div class="box"><p><strong>Diagnostic dual-model build.</strong> Stockfish runs once. Published Lichess accuracy and the v1.14.4 candidate are shown side by side.</p>
-<p class="notice">v1.14.4 keeps the validated rating-aware move model unchanged. Candidate game accuracy now uses cumulative expected-points error burden. Meaningful EP losses are severity-weighted, accumulated, normalized by the square root of the player's move count, then converted to accuracy using exponential decay. Later 100% moves add no burden and cannot erase earlier errors.</p>
-<p class="warning">Great, Brilliant and Miss are not fabricated. Forced is contextual. Best requires an exact Stockfish bestmove match.</p>
-<label><strong>PGNs</strong></label><textarea id="pgn" placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'></textarea>
-<div class="target"><div><strong>Optional target</strong></div><div>White</div><div>Black</div><div>Chess.com accuracy</div><input id="tw" type="number" min="0" max="100" step="0.1"><input id="tb" type="number" min="0" max="100" step="0.1"></div>
-<button id="go">Analyse PGNs</button><button id="stop" disabled>Stop</button><div id="status" class="status">Ready. Analyse button connected.</div><div id="engine" class="small"></div><div id="stats" class="stats"></div></div><div id="results"></div>
+body{font-family:Arial,sans-serif;max-width:1900px;margin:30px auto;padding:0 18px;background:#f5f5f5;color:#222}
+.box{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
+textarea{width:100%;box-sizing:border-box;min-height:220px;padding:12px;margin:8px 0 15px;font-family:monospace;resize:vertical}
+button{padding:11px 18px;margin:12px 7px 0 0;font-size:15px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;margin-top:15px;font-size:11px}
+th,td{border-bottom:1px solid #ddd;padding:6px;text-align:left;vertical-align:top}th{background:#eee;position:sticky;top:0;white-space:nowrap}
+.notice{background:#eef5ff;padding:12px;border-radius:7px}.warning{background:#fff4e5;padding:12px;border-radius:7px}
+.status{margin-top:12px;font-weight:bold}.small,.stats{color:#555;margin-top:8px}
+.summary{display:grid;grid-template-columns:270px 1fr 1fr;max-width:820px;gap:7px;margin-top:15px}.summary>div{padding:5px;border-bottom:1px solid #eee}
+.summary-header{font-weight:bold;background:#eee}.model-l{background:#eef5ff}.model-u{background:#f5f3ff}.ok{color:#15803d;font-weight:bold}.bad{color:#b91c1c;font-weight:bold}
+details{max-width:900px}pre{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<h1>Chess Move Classification Tester v1.14.5</h1>
+<div class="box">
+<p><strong>Stripped Lichess reference build.</strong> All experimental CAPS2, rating-aware EP, burden, severity and candidate calculations have been removed.</p>
+<p class="notice"><strong>Exact Lichess track:</strong> CP scores are ceiled to ±1000 before Win% conversion; all mate scores are converted to signed ±1000; move accuracy uses the precise exponential constants plus the +1 uncertainty bonus; game accuracy is the mean of the volatility-weighted mean and harmonic mean.</p>
+<p class="warning"><strong>Uncapped diagnostic track:</strong> the same Win% and move-accuracy equations are also applied to the raw, uncapped Stockfish CP values. This is not labelled as Lichess. It is retained solely for later Chess.com calibration. Mate scores still have no uncapped CP equivalent, so the uncapped diagnostic uses the same signed ±1000 mate mapping and flags those rows.</p>
+<label><strong>PGNs</strong></label>
+<textarea id="pgn" placeholder='Paste PGNs here. Separate games using [Event "..."] headers.'></textarea>
+<button id="go">Analyse PGNs</button><button id="stop" disabled>Stop</button>
+<div id="status" class="status">Ready. Analyse button connected.</div><div id="engine" class="small"></div><div id="stats" class="stats"></div>
+</div><div id="results"></div>
 <script type="module">
-const VERSION="1.14.4",SF="./Assets/stockfish-19-single.js",NODES=100000,RETRY=200000,HASH=128;
-const L_INIT=15,L_MATE=1000,L_S=.00368208,L_A=103.1668100711649,L_K=.04354415386753951,L_B=-3.166924740191411;
-const MATE_ADJ=.08,MATE_CP=2000,R_REF=800,BASE_S=.00290,R_STEP=.00000035,MIN_S=.00260,MAX_S=.004,ALLOW_FLOOR=.12,MISS_FLOOR=.06;
-const BURDEN_DECAY=.85,BURDEN_NOISE=.005,SEV={Best:1,Excellent:1,Good:1.1,Inaccuracy:1.4,Mistake:2,Blunder:3,Forced:.75};
-const QUAL=["Best","Excellent","Good","Inaccuracy","Mistake","Blunder","Forced"];
-const $=x=>document.getElementById(x),pgnEl=$("pgn"),go=$("go"),stop=$("stop"),status=$("status"),engine=$("engine"),stats=$("stats"),results=$("results"),tw=$("tw"),tb=$("tb");
-let Chess,worker,ready,current,fenWait,stopped=false,running=false,searches=0,hits=0,audits=0,failures=0,retries=0;const cache=new Map(),views=[];
+"use strict";
+const VERSION="1.14.5";
+const SF="./Assets/stockfish-19-single.js";
+const NODES=100000,RETRY=200000,HASH=128;
+
+// Exact Lichess constants from the supplied scalachess/lila source.
+const CP_INITIAL=15;
+const CP_CEILING=1000;
+const WIN_MULTIPLIER=-0.00368208;
+const ACC_A=103.1668100711649;
+const ACC_K=0.04354415386753951;
+const ACC_B=-3.166924740191411;
+const ACC_UNCERTAINTY_BONUS=1;
+
+const $=x=>document.getElementById(x),pgnEl=$("pgn"),go=$("go"),stop=$("stop"),status=$("status"),engine=$("engine"),stats=$("stats"),results=$("results");
+let Chess,worker,ready,current,fenWait,stopped=false,running=false,searches=0,hits=0,audits=0,failures=0,retries=0;
+const cache=new Map(),views=[];
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function header(pgn,n){const e=n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return pgn.match(new RegExp(`^\\[${e} "([^"]*)"\\]$`,"m"))?.[1]||""}
 function split(text){text=text.trim();if(!text)return[];const m=[...text.matchAll(/^\[Event\s/gm)];return m.length<=1?[text]:m.map((x,i)=>text.slice(x.index,m[i+1]?.index??text.length).trim()).filter(Boolean)}
-function uci(m){return(m.from+m.to+(m.promotion||"")).toLowerCase()}function norm(f){return String(f||"").trim().replace(/\s+/g," ")}
+function uci(m){return(m.from+m.to+(m.promotion||"")).toLowerCase()}
+function norm(f){return String(f||"").trim().replace(/\s+/g," ")}
 function fmt(r){if(!r)return"-";if(r.type==="mate")return(r.value>0?"+M":"-M")+Math.abs(r.value);const v=r.value/100;return(v>0?"+":"")+v.toFixed(2)}
-function whiteFmt(r,white){if(!r)return"-";const s=white?1:-1;if(r.type==="mate"){const m=r.value*s;return(m>0?"+M":"-M")+Math.abs(m)}const v=r.value*s/100;return(v>0?"+":"")+v.toFixed(2)}
+function whiteFmt(r,whiteToMove){if(!r)return"-";const s=whiteToMove?1:-1;if(r.type==="mate"){const m=r.value*s;return(m>0?"+M":"-M")+Math.abs(m)}const v=r.value*s/100;return(v>0?"+":"")+v.toFixed(2)}
 function update(){stats.textContent=`Stockfish searches: ${searches} | Engine cache hits: ${hits} | Bound retries: ${retries} | FEN audits: ${audits} | FEN failures: ${failures}`}
-function win(cp){cp=clamp(cp,-L_MATE,L_MATE);return 50+50*(2/(1+Math.exp(-L_S*cp))-1)}function acc(b,a){if(a>=b)return 100;return clamp(L_A*Math.exp(-L_K*(b-a))+L_B+1,0,100)}
-function sd(xs){const m=xs.reduce((a,b)=>a+b,0)/xs.length;return Math.sqrt(xs.reduce((s,x)=>s+(x-m)**2,0)/xs.length)}function mean(xs){return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null}function harmonic(xs){return!xs.length?null:xs.some(x=>x<=0)?0:xs.length/xs.reduce((s,x)=>s+1/x,0)}function weighted(es){const w=es.reduce((s,e)=>s+e.w,0);return es.length&&w?es.reduce((s,e)=>s+e.a*e.w,0)/w:null}
-function slope(r){r=Number(r);if(!Number.isFinite(r)||r<=0)r=R_REF;return clamp(BASE_S+(r-R_REF)*R_STEP,MIN_S,MAX_S)}
-function ep(r,rating){if(!r)return.5;const cp=r.type==="mate"?(r.value>0?MATE_CP:-MATE_CP):clamp(r.value,-MATE_CP,MATE_CP);return 1/(1+Math.exp(-slope(rating)*cp))}
-function mateAdj(b,p){if(b.type!=="mate"||p.type!=="mate"||Math.sign(b.value)!==Math.sign(p.value))return{normalized:0,ep:0};const bd=Math.abs(b.value),pd=Math.abs(p.value),d=b.value>0?Math.max(0,pd-bd):Math.max(0,bd-pd),n=d/Math.max(1,bd,pd);return{normalized:n,ep:clamp(n*MATE_ADJ,0,MATE_ADJ)}}
-function candidateLoss(b,p,rating){const before=ep(b,rating),after=ep(p,rating),raw=Math.max(0,before-after),mate=mateAdj(b,p);let adjusted=raw+mate.ep,transition="none";const bl=b.type==="mate"&&b.value<0,pl=p.type==="mate"&&p.value<0,bw=b.type==="mate"&&b.value>0,pw=p.type==="mate"&&p.value>0;if(!bl&&pl){adjusted=Math.max(adjusted,ALLOW_FLOOR);transition="allowedMate"}if(bw&&!pw){adjusted=Math.max(adjusted,MISS_FLOOR);transition="missedMate"}return{rating,slope:slope(rating),before,after,raw,adjusted:clamp(adjusted,0,1),mate,transition}}
-function cls(best,l){if(best)return"Best";if(l<=.02)return"Excellent";if(l<=.05)return"Good";if(l<=.10)return"Inaccuracy";if(l<=.20)return"Mistake";return"Blunder"}
-function toWhiteCp(r,white){if(r.type==="mate")return(r.value>0?L_MATE:-L_MATE)*(white?1:-1);return clamp(r.value*(white?1:-1),-L_MATE,L_MATE)}function position(f,m){return`position fen ${f}${m.length?" moves "+m.join(" "):""}`}
-function moveBurden(r){return Math.max(0,r.cEp.adjusted-BURDEN_NOISE)*(SEV[r.label]??1)}
+
+// ------------------------------------------------------------------
+// EXACT LICHESS SCORE -> CP / WIN% / ACCURACY
+// ------------------------------------------------------------------
+function ceiledCp(cp){return clamp(Number(cp)||0,-CP_CEILING,CP_CEILING)}
+function scoreToLichessCp(score){
+  if(score.type==="mate") return score.value>0?CP_CEILING:-CP_CEILING;
+  return ceiledCp(score.value);
+}
+function scoreToRawWhiteCp(score,whiteToMove){
+  const s=whiteToMove?1:-1;
+  if(score.type==="mate") return (score.value>0?CP_CEILING:-CP_CEILING)*s;
+  return score.value*s;
+}
+function scoreToLichessWhiteCp(score,whiteToMove){
+  const s=whiteToMove?1:-1;
+  return scoreToLichessCp(score)*s;
+}
+function winningChancesFromCp(cp){
+  // [-1,+1], matching scalachess WinPercent.winningChances.
+  return clamp(2/(1+Math.exp(WIN_MULTIPLIER*cp))-1,-1,1);
+}
+function winPercentFromCp(cp){return 50+50*winningChancesFromCp(cp)}
+function accuracyFromWinPercents(before,after){
+  if(after>=before)return 100;
+  const winDiff=before-after;
+  return clamp(ACC_A*Math.exp(-ACC_K*winDiff)+ACC_B+ACC_UNCERTAINTY_BONUS,0,100);
+}
+function sd(xs){if(!xs.length)return 0;const m=xs.reduce((a,b)=>a+b,0)/xs.length;return Math.sqrt(xs.reduce((s,x)=>s+(x-m)**2,0)/xs.length)}
+function weighted(es){const w=es.reduce((s,e)=>s+e.w,0);return es.length&&w?es.reduce((s,e)=>s+e.a*e.w,0)/w:null}
+function harmonic(xs){if(!xs.length)return null;if(xs.some(x=>x<=0))return 0;return xs.length/xs.reduce((s,x)=>s+1/x,0)}
+
+function buildTrack(rows,useCapped){
+  if(!rows.length)return{w:null,b:null,window:2};
+  const cps=rows.map(r=>useCapped?r.lichessAfterWhiteCp:r.rawAfterWhiteCp);
+  const all=[winPercentFromCp(CP_INITIAL),...cps.map(winPercentFromCp)];
+  const window=Math.max(2,Math.min(8,Math.floor(cps.length/10)));
+  const actual=Math.min(window,all.length),windows=[];
+  for(let i=0;i<Math.max(0,actual-2);i++)windows.push(all.slice(0,actual));
+  for(let i=0;i<=all.length-actual;i++)windows.push(all.slice(i,i+actual));
+  const weights=windows.map(xs=>clamp(sd(xs),0.5,12));
+  const by={w:[],b:[]};
+  rows.forEach((r,i)=>{
+    const prevWhite=all[i],nextWhite=all[i+1];
+    const before=r.color==="w"?prevWhite:100-prevWhite;
+    const after=r.color==="w"?nextWhite:100-nextWhite;
+    const accuracy=accuracyFromWinPercents(before,after);
+    const rec={accuracy,weight:weights[i]??0.5,before,after,loss:Math.max(0,before-after)};
+    if(useCapped){r.lBefore=before;r.lAfter=after;r.lLoss=rec.loss;r.lAcc=accuracy;r.lWeight=rec.weight}
+    else {r.uBefore=before;r.uAfter=after;r.uLoss=rec.loss;r.uAcc=accuracy;r.uWeight=rec.weight}
+    by[r.color].push(rec);
+  });
+  const one=c=>{const rs=by[c];if(!rs.length)return null;const wm=weighted(rs.map(r=>({a:r.accuracy,w:r.weight}))),hm=harmonic(rs.map(r=>r.accuracy));return{weighted:wm,harmonic:hm,final:(wm+hm)/2}};
+  return{w:one("w"),b:one("b"),window};
+}
+function metrics(rows){const lichess=buildTrack(rows,true),uncapped=buildTrack(rows,false);return{lichess,uncapped}}
+
+// ------------------------------------------------------------------
+// STOCKFISH UCI
+// ------------------------------------------------------------------
+function position(f,m){return`position fen ${f}${m.length?" moves "+m.join(" "):""}`}
 function reset(msg="Stopped."){for(const x of[current,ready,fenWait])if(x)clearTimeout(x.timer);current?.reject(new Error(msg));ready?.reject(new Error(msg));fenWait?.reject(new Error(msg));current=ready=fenWait=null;worker?.terminate();worker=null}
 function onLine(s){s=s.trim();if(!s)return;if(s.startsWith("id name "))engine.textContent="Engine: "+s.slice(8);if(fenWait){const m=s.match(/^Fen:\s*(.+)$/i);if(m){const f=fenWait;fenWait=null;clearTimeout(f.timer);f.resolve(m[1].trim())}}if(ready&&((ready.stage==="uci"&&s==="uciok")||(ready.stage==="ready"&&s==="readyok"))){const r=ready;ready=null;clearTimeout(r.timer);r.resolve();return}if(!current)return;if(s.startsWith("info ")&&s.includes(" score ")){const cp=s.match(/\bscore cp (-?\d+)/),mate=s.match(/\bscore mate (-?\d+)/),nodes=Number(s.match(/\bnodes\s+(\d+)/)?.[1]||0),bound=s.includes(" lowerbound")?"lower":s.includes(" upperbound")?"upper":null;if(cp||mate){const r={type:cp?"cp":"mate",value:Number(cp?cp[1]:mate[1]),nodes,bound,raw:s},k=bound?"bound":"exact";if(!current[k]||nodes>=current[k].nodes)current[k]=r}}if(s.startsWith("bestmove ")){const c=current;current=null;clearTimeout(c.timer);const r=c.exact||c.bound;if(!r){c.reject(new Error("Stockfish returned no score."));return}r.best=s.match(/^bestmove\s+(\S+)/)?.[1]||"";r.isExact=!r.bound;c.resolve(r)}}
 async function wait(stage="ready",time=30000){return new Promise((resolve,reject)=>{ready={stage,resolve,reject,timer:setTimeout(()=>{ready=null;reject(new Error("Stockfish ready timeout."))},time)};worker.postMessage(stage==="uci"?"uci":"isready")})}
-async function init(){if(worker)return;worker=new Worker(new URL(SF,document.baseURI).href);worker.onmessage=e=>String(e.data||"").split(/\r?\n/).forEach(onLine);worker.onerror=e=>reset(e.message||"Stockfish failed");await wait("uci",60000);worker.postMessage("setoption name Threads value 1");worker.postMessage(`setoption name Hash value ${HASH}`);worker.postMessage("setoption name MultiPV value 1");worker.postMessage("setoption name UCI_ShowWDL value true");await wait()}
+async function init(){if(worker)return;worker=new Worker(new URL(SF,document.baseURI).href);worker.onmessage=e=>String(e.data||"").split(/\r?\n/).forEach(onLine);worker.onerror=e=>reset(e.message||"Stockfish failed");await wait("uci",60000);worker.postMessage("setoption name Threads value 1");worker.postMessage(`setoption name Hash value ${HASH}`);worker.postMessage("setoption name MultiPV value 1");await wait()}
 async function audit(f,m,expected){worker.postMessage(position(f,m));const actual=await new Promise((resolve,reject)=>{fenWait={resolve,reject,timer:setTimeout(()=>{fenWait=null;reject(new Error("FEN audit timeout."))},10000)};worker.postMessage("d")});audits++;const ok=norm(actual)===norm(expected);if(!ok)failures++;update();if(!ok)throw new Error(`FEN mismatch. Chess.js: ${expected} | Stockfish: ${actual}`);return ok}
 async function search({fen,moves,expected,only=[],nodes=NODES,doAudit=true}){await init();const key=`${fen}|${moves.join(" ")}|${only.join(" ")}|${nodes}`;if(cache.has(key)){hits++;update();return cache.get(key)}if(doAudit)await audit(fen,moves,expected);worker.postMessage("setoption name Clear Hash");await wait();worker.postMessage(position(fen,moves));const cmd=`go nodes ${nodes}${only.length?" searchmoves "+only.join(" "):""}`;searches++;update();const r=await new Promise((resolve,reject)=>{current={resolve,reject,exact:null,bound:null,timer:setTimeout(()=>{worker.postMessage("stop");current=null;reject(new Error("Stockfish search timeout."))},180000)};worker.postMessage(cmd)});cache.set(key,r);return r}
 async function exact(a){let r=await search(a);if(r.isExact)return r;retries++;update();return search({...a,nodes:RETRY,doAudit:false})}
-function metrics(rows){if(!rows.length)return{w:null,b:null,window:2};const cps=rows.map(r=>r.afterCp),all=[win(L_INIT),...cps.map(win)],window=clamp(Math.floor(cps.length/10),2,8),n=Math.min(window,all.length),wins=[];for(let i=0;i<Math.max(0,n-2);i++)wins.push(all.slice(0,n));for(let i=0;i<=all.length-n;i++)wins.push(all.slice(i,i+n));const ws=wins.map(x=>clamp(sd(x),.5,12)),by={w:[],b:[]};rows.forEach((r,i)=>{const b=r.color==="w"?all[i]:100-all[i],a=r.color==="w"?all[i+1]:100-all[i+1];r.lAcc=acc(b,a);r.lWeight=ws[i]??.5;by[r.color].push(r)});const one=c=>{const rs=by[c];if(!rs.length)return null;const la=rs.map(r=>r.lAcc),ca=rs.map(r=>r.cAcc),lw=weighted(rs.map(r=>({a:r.lAcc,w:r.lWeight}))),lh=harmonic(la),rawBurden=rs.reduce((s,r)=>s+moveBurden(r),0),normalizedBurden=rawBurden/Math.sqrt(rs.length),burdenScore=100*Math.exp(-BURDEN_DECAY*normalizedBurden);return{lf:(lw+lh)/2,lw,lh,arithmetic:mean(ca),harmonic:harmony(ca),rawBurden,normalizedBurden,burdenScore,final:clamp(burdenScore,0,100)}};return{w:one("w"),b:one("b"),window}}
-function harmony(xs){return harmonic(xs)}
-function createView(num){const box=document.createElement("div");box.className="box";box.innerHTML=`<h2>Game ${num}</h2><p class="small">Dual-model diagnostic: Lichess versus v1.14.4 cumulative-burden candidate.</p><div class="table-wrap"><table><thead><tr>${["Ply","Move","Lichess acc","Candidate acc","Class","Display label","Severity wt","Move burden","After eval","EP before","EP after","EP raw","EP adjusted","Transition","Mate adj","Best move","Best root","Played root","FEN","Diagnostics"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody></tbody></table></div><div class="summary"></div>`;results.appendChild(box);const v={rows:[],body:box.querySelector("tbody"),summary:box.querySelector(".summary")};views.push(v);return v}
+
+// ------------------------------------------------------------------
+// UI
+// ------------------------------------------------------------------
+function createView(num){const box=document.createElement("div");box.className="box";box.innerHTML=`<h2>Game ${num}</h2><p class="small">Exact Lichess track plus uncapped CP diagnostic. No CAPS2 candidate model.</p><div class="table-wrap"><table><thead><tr>${["Ply","Move","After raw","After Lichess CP","Lichess Win before","Lichess Win after","Lichess loss","Lichess acc","Uncapped Win before","Uncapped Win after","Uncapped loss","Uncapped acc","Volatility wt","Best move","Best root","Played root","FEN","Diagnostics"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody></tbody></table></div><div class="summary"></div>`;results.appendChild(box);const v={rows:[],body:box.querySelector("tbody"),summary:box.querySelector(".summary")};views.push(v);return v}
 function td(tr,x,c=""){const e=document.createElement("td");e.textContent=x;if(c)e.className=c;tr.appendChild(e)}
-function render(v){const m=metrics(v.rows);v.body.replaceChildren();for(const r of v.rows){const tr=document.createElement("tr");td(tr,r.ply);td(tr,`${r.san} (${r.uci})`);td(tr,r.lAcc.toFixed(1)+"%");td(tr,r.cAcc.toFixed(1)+"%");td(tr,r.cClass,r.cClass);td(tr,r.label,r.label);td(tr,(SEV[r.label]??1).toFixed(2));td(tr,moveBurden(r).toFixed(3));td(tr,r.after);td(tr,r.cEp.before.toFixed(3));td(tr,r.cEp.after.toFixed(3));td(tr,r.cEp.raw.toFixed(3));td(tr,r.cEp.adjusted.toFixed(3));td(tr,r.cEp.transition);td(tr,r.cEp.mate.ep.toFixed(3));td(tr,r.best.best||"-");td(tr,fmt(r.best));td(tr,fmt(r.played));td(tr,r.audit?"PASS":"FAIL",r.audit?"ok":"bad");const d=document.createElement("td"),det=document.createElement("details"),su=document.createElement("summary"),pre=document.createElement("pre");su.textContent="Details";pre.textContent=`Version: ${VERSION}\nRating: ${r.cEp.rating}\nSlope: ${r.cEp.slope.toFixed(8)}\nExpected points before: ${r.cEp.before.toFixed(6)}\nExpected points after: ${r.cEp.after.toFixed(6)}\nRaw loss: ${r.cEp.raw.toFixed(6)}\nMate adjustment: ${r.cEp.mate.ep.toFixed(6)}\nAdjusted loss: ${r.cEp.adjusted.toFixed(6)}\nTransition: ${r.cEp.transition}\nSeverity weight: ${(SEV[r.label]??1).toFixed(2)}\nMove burden: ${moveBurden(r).toFixed(6)}\nCandidate accuracy: ${r.cAcc.toFixed(6)}%\nLichess accuracy: ${r.lAcc.toFixed(6)}%\nBest: ${r.best.raw}\nPlayed: ${r.played.raw}`;det.append(su,pre);d.append(det);tr.appendChild(d);v.body.appendChild(tr)}renderSummary(v,m)}
-function renderSummary(v,m){v.summary.replaceChildren();const item=(x,c="")=>{const d=document.createElement("div");d.textContent=x;if(c)d.className=c;v.summary.appendChild(d)},disp=x=>x==null||!Number.isFinite(x)?"-":x.toFixed(1)+"%",target=e=>e.value===""?null:Number(e.value),err=(x,y)=>x==null||y==null?"-":(x-y).toFixed(1);item("Metric","summary-header");item("White","summary-header");item("Black","summary-header");item("Lichess game accuracy","model-l");item(disp(m.w?.lf),"model-l");item(disp(m.b?.lf),"model-l");item("v1.14.4 candidate accuracy","model-c");item(disp(m.w?.final),"model-c");item(disp(m.b?.final),"model-c");item("Chess.com target");item(disp(target(tw)));item(disp(target(tb)));item("Candidate error vs target");item(err(m.w?.final,target(tw)));item(err(m.b?.final,target(tb)));item("Raw cumulative EP burden");item(m.w?m.w.rawBurden.toFixed(3):"-");item(m.b?m.b.rawBurden.toFixed(3):"-");item("Normalized EP burden");item(m.w?m.w.normalizedBurden.toFixed(3):"-");item(m.b?m.b.normalizedBurden.toFixed(3):"-");item("Burden accuracy score");item(disp(m.w?.burdenScore));item(disp(m.b?.burdenScore));item("Candidate arithmetic diagnostic");item(disp(m.w?.arithmetic));item(disp(m.b?.arithmetic));item("Candidate harmonic diagnostic");item(disp(m.w?.harmonic));item(disp(m.b?.harmonic));item("Lichess weighted mean");item(disp(m.w?.lw));item(disp(m.b?.lw));item("Lichess harmonic");item(disp(m.w?.lh));item(disp(m.b?.lh));item("Volatility window size");item(String(m.window));item(String(m.window));for(const q of QUAL){item(q,q);item(v.rows.filter(r=>r.color==="w"&&r.label===q).length);item(v.rows.filter(r=>r.color==="b"&&r.label===q).length)}}
-async function analyse(pgn,num){const game=new Chess();game.loadPgn(pgn,{strict:false});const hist=game.history({verbose:true});if(!hist.length)throw new Error(`Game ${num} contains no moves.`);const wr=+header(pgn,"WhiteElo")||R_REF,br=+header(pgn,"BlackElo")||R_REF,root=hist[0].before,replay=new Chess(root),moves=[],v=createView(num);worker.postMessage("ucinewgame");await wait();for(let i=0;i<hist.length;i++){if(stopped)throw new Error("Stopped.");const pre=replay.fen(),white=replay.turn()==="w",legal=replay.moves().length,mv=replay.move(hist[i].san),u=uci(mv),afterMoves=[...moves,u],afterFen=replay.fen(),afterWhite=replay.turn()==="w";status.textContent=`Game ${num}: analysing ${mv.san} (${i+1}/${hist.length})...`;const best=await exact({fen:root,moves,expected:pre}),isBest=best.best.toLowerCase()===u,played=isBest?best:await exact({fen:root,moves,expected:pre,only:[u],doAudit:false}),rating=mv.color==="w"?wr:br,cEp=candidateLoss(best,played,rating),cAcc=acc(100,100-cEp.adjusted*100),cClass=cls(isBest,cEp.adjusted),label=legal===1?"Forced":cClass;let ar,after,afterCp;if(replay.isCheckmate()){afterCp=white?L_MATE:-L_MATE;after=white?"+M0":"-M0"}else if(replay.isDraw()){afterCp=0;after="0.00"}else{ar=await exact({fen:root,moves:afterMoves,expected:afterFen});afterCp=toWhiteCp(ar,afterWhite);after=whiteFmt(ar,afterWhite)}v.rows.push({ply:i+1,color:mv.color,san:mv.san,uci:u,best,played,cEp,cAcc,cClass,label,after,afterCp,audit:true,lAcc:100,lWeight:.5});render(v);moves.push(u)}}
+function displayRaw(r){return r.afterScoreType==="mate"?(r.afterScoreValue>0?"+M":"-M")+Math.abs(r.afterScoreValue):(r.rawAfterWhiteCp/100).toFixed(2)}
+function render(v){const m=metrics(v.rows);v.body.replaceChildren();for(const r of v.rows){const tr=document.createElement("tr");td(tr,r.ply);td(tr,`${r.san} (${r.uci})`);td(tr,displayRaw(r));td(tr,(r.lichessAfterWhiteCp/100).toFixed(2));td(tr,r.lBefore.toFixed(6));td(tr,r.lAfter.toFixed(6));td(tr,r.lLoss.toFixed(6));td(tr,r.lAcc.toFixed(1)+"%");td(tr,r.uBefore.toFixed(6));td(tr,r.uAfter.toFixed(6));td(tr,r.uLoss.toFixed(6));td(tr,r.uAcc.toFixed(1)+"%");td(tr,r.lWeight.toFixed(3));td(tr,r.best.best||"-");td(tr,fmt(r.best));td(tr,fmt(r.played));td(tr,r.audit?"PASS":"FAIL",r.audit?"ok":"bad");const d=document.createElement("td"),det=document.createElement("details"),su=document.createElement("summary"),pre=document.createElement("pre");su.textContent="Details";pre.textContent=`Version: ${VERSION}\nAfter score type: ${r.afterScoreType}\nAfter raw score value: ${r.afterScoreValue}\nAfter raw White CP diagnostic: ${r.rawAfterWhiteCp}\nAfter Lichess White CP: ${r.lichessAfterWhiteCp}\nLichess Win% before: ${r.lBefore.toFixed(9)}\nLichess Win% after: ${r.lAfter.toFixed(9)}\nLichess Win% loss: ${r.lLoss.toFixed(9)}\nLichess move accuracy: ${r.lAcc.toFixed(9)}%\nUncapped Win% before: ${r.uBefore.toFixed(9)}\nUncapped Win% after: ${r.uAfter.toFixed(9)}\nUncapped Win% loss: ${r.uLoss.toFixed(9)}\nUncapped diagnostic accuracy: ${r.uAcc.toFixed(9)}%\nBest search: ${r.best.raw}\nPlayed search: ${r.played.raw}`;det.append(su,pre);d.append(det);tr.appendChild(d);v.body.appendChild(tr)}renderSummary(v,m)}
+function renderSummary(v,m){v.summary.replaceChildren();const item=(x,c="")=>{const d=document.createElement("div");d.textContent=x;if(c)d.className=c;v.summary.appendChild(d)},pct=x=>x==null?"-":x.toFixed(1)+"%";item("Metric","summary-header");item("White","summary-header");item("Black","summary-header");item("Exact Lichess game accuracy","model-l");item(pct(m.lichess.w?.final),"model-l");item(pct(m.lichess.b?.final),"model-l");item("Lichess weighted mean");item(pct(m.lichess.w?.weighted));item(pct(m.lichess.b?.weighted));item("Lichess harmonic mean");item(pct(m.lichess.w?.harmonic));item(pct(m.lichess.b?.harmonic));item("Uncapped diagnostic game accuracy","model-u");item(pct(m.uncapped.w?.final),"model-u");item(pct(m.uncapped.b?.final),"model-u");item("Uncapped weighted mean");item(pct(m.uncapped.w?.weighted));item(pct(m.uncapped.b?.weighted));item("Uncapped harmonic mean");item(pct(m.uncapped.w?.harmonic));item(pct(m.uncapped.b?.harmonic));item("Volatility window size");item(String(m.lichess.window));item(String(m.lichess.window))}
+
+async function analyse(pgn,num){const game=new Chess();game.loadPgn(pgn,{strict:false});const hist=game.history({verbose:true});if(!hist.length)throw new Error(`Game ${num} contains no moves.`);await init();worker.postMessage("ucinewgame");await wait();const root=hist[0].before,replay=new Chess(root),moves=[],v=createView(num);for(let i=0;i<hist.length;i++){if(stopped)throw new Error("Stopped.");const pre=replay.fen(),whiteToMove=replay.turn()==="w",mv=replay.move(hist[i].san),u=uci(mv),afterMoves=[...moves,u],afterFen=replay.fen(),afterWhiteToMove=replay.turn()==="w";status.textContent=`Game ${num}: analysing ${mv.san} (${i+1}/${hist.length})...`;const best=await exact({fen:root,moves,expected:pre}),played=best.best.toLowerCase()===u?best:await exact({fen:root,moves,expected:pre,only:[u],doAudit:false});let afterResult,afterText,rawAfterWhiteCp,lichessAfterWhiteCp,afterScoreType,afterScoreValue;if(replay.isCheckmate()){afterScoreType="mate";afterScoreValue=whiteToMove?1:-1;rawAfterWhiteCp=whiteToMove?CP_CEILING:-CP_CEILING;lichessAfterWhiteCp=rawAfterWhiteCp;afterText=whiteToMove?"+M0":"-M0"}else if(replay.isDraw()){afterScoreType="cp";afterScoreValue=0;rawAfterWhiteCp=0;lichessAfterWhiteCp=0;afterText="0.00"}else{afterResult=await exact({fen:root,moves:afterMoves,expected:afterFen});afterScoreType=afterResult.type;afterScoreValue=afterResult.value;rawAfterWhiteCp=scoreToRawWhiteCp(afterResult,afterWhiteToMove);lichessAfterWhiteCp=scoreToLichessWhiteCp(afterResult,afterWhiteToMove);afterText=whiteFmt(afterResult,afterWhiteToMove)}v.rows.push({ply:i+1,color:mv.color,san:mv.san,uci:u,best,played,after:afterText,afterScoreType,afterScoreValue,rawAfterWhiteCp,lichessAfterWhiteCp,audit:true,lAcc:100,lWeight:.5,uAcc:100,uWeight:.5});render(v);moves.push(u)}}
 async function boot(){if(!Chess){status.textContent="Loading chess parser...";Chess=(await import("https://esm.sh/chess.js@1.4.0")).Chess}await init()}
 go.onclick=async()=>{if(running)return;const games=split(pgnEl.value);if(!games.length){status.textContent="Paste at least one PGN.";return}running=true;stopped=false;go.disabled=true;stop.disabled=false;results.replaceChildren();views.length=0;searches=hits=audits=failures=retries=0;update();try{await boot();for(let i=0;i<games.length;i++)await analyse(games[i],i+1);status.textContent=`Analysis complete. FEN audits: ${audits-failures}/${audits} passed.`}catch(e){console.error(e);status.textContent=stopped?"Stopped. Completed results remain visible.":"Error: "+e.message}finally{running=false;go.disabled=false;stop.disabled=true;update()}};
-stop.onclick=()=>{stopped=true;worker?.postMessage("stop");reset();status.textContent="Stopping. Completed results remain visible."};for(const x of[tw,tb])x.oninput=()=>views.forEach(v=>renderSummary(v,metrics(v.rows)));update();
-</script></body></html>
+stop.onclick=()=>{stopped=true;worker?.postMessage("stop");reset();status.textContent="Stopping. Completed results remain visible."};update();
+</script>
+</body></html>
